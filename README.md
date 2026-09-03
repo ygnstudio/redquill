@@ -1,6 +1,6 @@
 # RedQuill
 
-在 Obsidian 里舒服地写中文 md——通用写作（粘贴净化、排版体检、写作仪表盘）与公文排版（GB/T 9704 红头/版式/docx）合一的插件：frontmatter 命中公文要素自动进公文模式，普通笔记走通用写作体验。
+在 Obsidian 里舒服地写中文 md——通用写作（粘贴净化、排版体检、写作仪表盘、编辑器手感）与公文排版（GB/T 9704 红头/版式/docx）合一的插件：frontmatter 命中公文要素自动进公文模式，普通笔记走通用写作体验。
 
 🔗 BRAT 安装：`ygnstudio/redquill`　⬇️ [手动下载](../../releases)　📖 [使用指南](docs/user_guide_2026-09-03_v1_active.md)　🐛 [问题反馈](../../issues)
 
@@ -16,6 +16,7 @@
 - **一键修复**（命令「一键修复排版」）：只自动修无歧义项（重复标点/半角标点/中英空格/控制字符/全角空格），逐行替换保留 Ctrl+Z 撤销；有歧义项（括号引号配对/直引号/叠字）只报不修
 - **代码与链接不误伤**：代码围栏、行内 code、URL、md 链接整段跳过；数字不误伤：2026 年、3.5、v1.2.3、「1..5」范围都不算半角混用
 - **写作面板五卡**（右侧栏）：字数（中文/非空白/总字符/段数/光标行）、标点体检速览（实时 error/warn 计数 + 看报告）、标题树（h1-h3 点击跳转、当前小节高亮）、快捷插入（表格/引用/代码块/折叠块/待办/分隔线/图片占位）、空文档引导
+- **编辑器手感**（v1.1，CM6 层，装好即生效）：双击按中文词段选词（中/英/数分流、标点不粘连）；敲 `"` 中文语境自动成对 `“光标”`/补右/跳越（代码与英文直通）；10 个命令——选中当前段/标题行、选中光标词段、弯引号包裹选区、行内格式 toggle 5 种（加粗/斜体/删除线/高亮/行内代码，单次撤销）、打断列表、列表转纯文本
 
 **公文排版层（frontmatter 含 `rh-*` 要素时自动浮现）**
 
@@ -28,19 +29,25 @@
 - **新建公文向导**（16 文种）：命令「新建公文」弹文种列表（打字筛选）→ 输标题 → 自动预填默认发文机关与当年文号；模板可批量安装到模板文件夹（装 Templater 附带弹窗版）
 - **写作辅助面板**（公文侧栏）：跟随光标诊断当前行公文角色（文件标题/一二级/正文/表格…）、给下一级序号建议（「一级 三、」「二级 （四）」）、一键插入标题/表格/附件分隔线
 - **移动端可用**：通用写作层 `isDesktopOnly: false` 双端生效；桌面能力（预览/docx）在移动端自动降级不干扰
-- **纯函数内核可机器校验**：净化/体检/公文解析/版式全部无 Obsidian 依赖，15 套校验（400+ 断言）跑在 CI——规则改动可回归
+- **纯函数内核可机器校验**：净化/体检/公文解析/版式/编辑手感全部无 Obsidian 依赖，16 套校验（500+ 断言）跑在 CI——规则改动可回归
 
 ## 目录结构
 
 ```
 redquill/
 ├── src/
-│   ├── main.ts            # 插件壳（三视图/12 命令/上下文判定接线/设置页双区）
+│   ├── main.ts            # 插件壳（三视图/22 命令/CM6 扩展注册/上下文判定接线/设置页双区）
 │   ├── context.ts         # 公文上下文判定器（frontmatter 命中 rh-* → 公文模式，可手动三态）
 │   ├── paste_clean.ts     # 粘贴净化纯函数（合一唯一引擎，公文/通用共用）
 │   ├── checker.ts         # 通用八条体检引擎 + fixAll 一键修复（纯函数）
 │   ├── mdast.ts           # 标题树 outlineOf / 字数统计 charStats（纯函数）
 │   ├── settings_util.ts   # 通用设置模型与清洗管线
+│   ├── editing/           # 编辑器手感纯函数（v1.1：词段/引号/行内/列表，零 obsidian）
+│   │   ├── segments.ts    #   ④光标与选区：wordSegmentAt/blockRangeAt/titleLineRangeAt
+│   │   ├── quotes.ts      #   ⑤引号：quotePairAt（成对/补右/跳越）+ curlyWrapDelta
+│   │   ├── inline.ts      #   ⑤行内格式 toggle：inlineReplace（delta 最小事务）
+│   │   ├── listops.ts     #   ⑦列表：breakList / listToPlain
+│   │   └── plugin.ts      #   CM6 扩展接线（双击词段/引号输入，registerEditorExtension）
 │   ├── file_scan.ts       # 批量输入展开（CLI 用，不随插件打包）
 │   ├── ledger.ts          # 文号台账判定（CLI 用）
 │   ├── cli.ts             # CLI 调试壳（node dist/cli.js …）
@@ -53,7 +60,7 @@ redquill/
 │       ├── settings.ts    #   公文设置结构与清洗管线（RedHeadSettings）
 │       ├── preview.ts     #   预览 HTML 渲染（与 docx 同源）
 │       └── docx_export.ts #   docx 生成（含文件属性：标题/作者/文号）
-├── tests/               # 校验脚本与样例（15 套：红公文线 13 + 通用 v010 + 判定器 merge）
+├── tests/               # 校验脚本与样例（16 套：红公文线 13 + 通用 v010 + 判定器 merge + 编辑手感 editing）
 ├── docs/                # 使用指南与设计文档
 ├── main.js              # 构建产物（BRAT 直接拉取）
 ├── manifest.json
@@ -77,9 +84,10 @@ flowchart LR
 1. **安装**：BRAT 添加 `ygnstudio/redquill`（或从 Release 下载 `main.js`/`manifest.json`/`styles.css` 放入 `.obsidian/plugins/redquill/`）
 2. **普通写作**：正常打字；网页/Word 复制内容过来时运行「**粘贴并净化**」；写完运行「**排版体检·通用八条**」看报告点行号跳转；长文开侧栏「**写作面板**」
 3. **写公文**：命令「**新建公文**」选文种开写（frontmatter 自动带公文要素 → 插件自动切公文模式）；或开「**写作辅助面板**」点「公文属性表单」补要素；预览面板「**导出 docx**」出 Word/WPS 文件
-4. **两套都不想要自动切**：命令「**切换公文模式**」三态循环（自动判定 → 强制公文 → 强制通用），会话级即时生效
+4. **想要编辑器手感**（v1.1）：直接双击中文词段选词、中文里敲 `"` 自动变 `“”`；命令面板搜「选中当前段」「行内格式」「打断列表」体验 10 个新命令（完整冒烟清单见指南 §七）
+5. **两套都不想要自动切**：命令「**切换公文模式**」三态循环（自动判定 → 强制公文 → 强制通用），会话级即时生效
 
-命令一览（12 个）：`打开排版预览` / `打开写作辅助面板`（内含公文属性表单/公文体检/导出按钮）/ `打开通用写作面板` / `新建公文` / `粘贴并净化` / `清洗选区 / 当前段` / `公文排版体检` / `排版体检·通用八条` / `一键修复排版` / `导出 docx` / `切换公文模式` / `安装公文模板`。
+命令一览（22 个）：公文与通用 12 个（`打开排版预览` / `打开写作辅助面板` / `打开通用写作面板` / `新建公文` / `粘贴并净化` / `清洗选区 / 当前段` / `公文排版体检` / `排版体检·通用八条` / `一键修复排版` / `导出 docx` / `切换公文模式` / `安装公文模板`）+ 编辑器手感 10 个（`选中当前段 / 标题行` / `选中光标处词段` / `中文弯引号包裹选区` / `行内格式：加粗` / `行内格式：斜体` / `行内格式：删除线` / `行内格式：高亮` / `行内格式：行内代码` / `打断列表` / `列表转纯文本`）。
 
 ## 开发
 
@@ -88,15 +96,15 @@ npm install
 npm run build                  # tsc 类型检查 + esbuild 打包 main.js
 npm run build:cli              # CLI 调试壳（node dist/cli.js input.md [--check]）
 python3 tests/verify_merge.py  # 判定器校验（36 断言）
-# 全量 15 套回归：tests/verify_*.py（红公文线 13 + 通用 v010 + 判定器 merge），CI 逐套跑
+# 全量 16 套回归：tests/verify_*.py（红公文线 13 + 通用 v010 + 判定器 merge + 编辑手感 editing），CI 逐套跑
 ```
 
 > 校验脚本需 Python ≥ 3.10（可用 WorkBuddy 受管 3.13 或 brew python3.13）。
 
-**发布（v1.0.0 起自动化）**：打 tag 推送即触发 Actions `release` 工作流——全量 15 套回归 → 构建 → 打包（`main.js`/`manifest.json`/`styles.css` 裸三件 + `redquill-<版本>.zip`）→ 创建 GitHub Release。tag 名须等于 `manifest.json` 的 `version`（带 `v` 前缀），不一致自动失败：
+**发布（v1.0.0 起自动化）**：打 tag 推送即触发 Actions `release` 工作流——全量 16 套回归 → 构建 → 打包（`main.js`/`manifest.json`/`styles.css` 裸三件 + `redquill-<版本>.zip`）→ 创建 GitHub Release。tag 名须等于 `manifest.json` 的 `version`（带 `v` 前缀），不一致自动失败：
 
 ```bash
-git tag v1.0.0 && git push origin v1.0.0   # 触发 .github/workflows/release.yml
+git tag v1.1.0 && git push origin v1.1.0   # 触发 .github/workflows/release.yml
 ```
 
 ## 联系

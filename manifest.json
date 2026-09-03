@@ -1,9 +1,9 @@
 {
   "id": "redquill",
   "name": "RedQuill",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minAppVersion": "1.4.0",
-  "description": "通用 md 写作体验 + 红头公文引擎（GB/T 9704）合一：粘贴净化、中文排版体检与一键修复、写作仪表盘（字数/标题树/体检速览/快捷插入）、公文属性表单/排版预览/公文体检/docx 导出/16 文种向导，frontmatter 自动判定上下文",
+  "description": "通用 md 写作体验 + 红头公文引擎（GB/T 9704）合一：粘贴净化、中文排版体检与一键修复、写作仪表盘、编辑器手感（双击中文词段/引号自动成对/选中段/行内格式/列表增强）、公文属性表单/排版预览/公文体检/docx 导出/16 文种向导，frontmatter 自动判定上下文",
   "author": "ygnstudio",
   "isDesktopOnly": false
 }

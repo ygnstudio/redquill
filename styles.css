@@ -1,6 +1,6 @@
-/* MDQuill v0.1.0 —— 写作面板与体检报告样式 */
+/* RedQuill v1.0.0 —— 合一样式（通用写作面板 mdquill-* 原样保留 + 公文壳 redquill-* 并入） */
 
-/* ---- 写作面板（右侧栏） ---- */
+/* ================= 通用：写作面板（五卡，右侧栏） ================= */
 
 .mdquill-card {
   margin: 6px 0 10px;
@@ -97,69 +97,168 @@
   border-style: dashed;
 }
 
-/* ---- 体检报告（弹窗） ---- */
+/* ================= 公文壳：预览面板控制条 + 纸面 ================= */
 
-.mdquill-check-list {
-  max-height: 420px;
+.redquill-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.redquill-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.redquill-paper {
+  overflow: auto;
+  padding: 16px;
+  background: var(--background-secondary);
+  height: 100%;
+}
+.redquill-paper .rg-page {
+  margin: 0 auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* 设置页：预设编辑器 */
+.redquill-preset-editor {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 4px 16px 12px;
+  margin-top: 8px;
+}
+.redquill-preset-editor h4 {
+  margin: 16px 0 4px;
+  color: var(--text-muted);
+}
+.redquill-preset-editor h5 {
+  margin: 12px 0 0;
+  color: var(--text-accent);
+}
+
+/* 设置页：公文模板分组折叠 */
+.redquill-tgroup {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.redquill-tgroup summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--text-normal);
+  user-select: none;
+  list-style-position: inside;
+}
+.redquill-tgroup[open] summary {
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-accent);
+}
+
+/* 体检报告弹窗（公文结构体检 + 通用八条共用，v0.7.0） */
+.redquill-check-list {
+  max-height: 55vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 8px;
 }
-
-.mdquill-check-item {
+.redquill-check-item {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-s);
+  padding: 7px 10px;
+  border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
-  flex-wrap: wrap;
+  background: var(--background-secondary);
+  font-size: 13px;
 }
-
-.mdquill-check-item.error {
+.redquill-check-item.error {
   border-left: 3px solid var(--text-error);
 }
-
-.mdquill-check-item.warn {
-  border-left: 3px solid var(--text-warning);
+.redquill-check-item.warn {
+  border-left: 3px solid var(--color-yellow);
 }
-
-.mdquill-check-badge {
+.redquill-check-badge {
   flex: none;
-  font-size: 0.75em;
-  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
   border-radius: 10px;
+  margin-top: 1px;
   color: var(--text-on-accent);
 }
-
-.mdquill-check-item.error .mdquill-check-badge {
+.redquill-check-item.error .redquill-check-badge {
   background: var(--text-error);
 }
-
-.mdquill-check-item.warn .mdquill-check-badge {
-  background: var(--text-warning);
+.redquill-check-item.warn .redquill-check-badge {
+  background: var(--color-yellow);
+  color: #000;
 }
-
-.mdquill-check-msg {
-  flex: 1 1 300px;
-  font-size: 0.9em;
+.redquill-check-msg {
+  flex: 1;
+  line-height: 1.5;
+  color: var(--text-normal);
 }
-
-.mdquill-check-fix {
+.redquill-check-line {
   flex: none;
-  font-size: 0.75em;
-  color: var(--text-success);
-}
-
-.mdquill-check-line {
-  flex: none;
-  font-size: 0.85em;
-  color: var(--text-accent);
   cursor: pointer;
-  text-decoration: underline dotted;
+  color: var(--text-accent);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.redquill-check-line:hover {
+  background: var(--background-modifier-hover);
+  text-decoration: underline;
 }
 
-.mdquill-check-line:hover {
-  color: var(--interactive-accent);
+/* 设置导入粘贴框（v0.8.0） */
+.redquill-import-json {
+  width: 100%;
+  min-height: 110px;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  resize: vertical;
+  margin: 4px 0;
+}
+
+/* 写作辅助面板（v0.11.0） */
+.redquill-write-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: var(--background-secondary);
+}
+.redquill-write-role {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.redquill-write-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 6px 0 2px;
+}
+.redquill-write-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+.redquill-write-btn {
+  flex: none;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+.redquill-wizard-input {
+  margin: 6px 0 2px;
 }

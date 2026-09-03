@@ -1,5 +1,7 @@
 # MDQuill 使用指南
 
+> ⚠️ **历史文档（已被取代）**：MDQuill 已于 2026-09-03 与 RedHead 合一为 **RedQuill**（本仓库）。本指南是合一前的 MDQuill v0.1 快照，仅留档；能力与用法见 **[RedQuill 使用指南 v1.0.0](user_guide_2026-09-03_v1_active.md)**。
+
 - 版本：v0.1.0（2026-09-03）
 - 定位：在 Obsidian 里舒服地写 md——粘贴净化、中文排版体检（一键修复）、右侧栏写作仪表盘
 - 同类边界：不做「课程/模板/学习」；不管公文章节排版（那是 [RedHead](https://github.com/ygnstudio/obsidian-redhead) 的活）

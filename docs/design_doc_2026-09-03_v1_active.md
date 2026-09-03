@@ -1,5 +1,7 @@
 # MDQuill（md 写作体验插件）设计文档
 
+> ⚠️ **历史文档（已被取代）**：MDQuill 已于 2026-09-03 与 RedHead 合一为 **RedQuill**，本设计文档仅留档。合一蓝图见 **[design_doc_merge_2026-09-03_v1_active.md](design_doc_merge_2026-09-03_v1_active.md)**。
+
 - 版本：design_doc_2026-09-03_v1_active
 - 状态：蓝图阶段，待用户对答案
 - 缘起：2026-09-03 RedHead v1.0.0 收官（21/21）后，用户问「还有什么要做的？尤其是加强 md 的写作体验。公文的事情先结束」→ 裁定独立新插件 MDQuill。RedHead 中已验证的通用写作模块（粘贴清洗 / 体检引擎 / 写作辅助面板）泛化迁移，不另起炉灶。

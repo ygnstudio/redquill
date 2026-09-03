@@ -1,10 +1,10 @@
-# MDQuill
+# RedQuill
 
 在 Obsidian 里舒服地写 md：粘贴即纯净、写完一键中文排版体检、右侧栏写作仪表盘——把「打字之外的杂事」交给插件，中文写作不别扭。
 
-🔗 BRAT 安装：`ygnstudio/mdquill`　⬇️ [手动下载](../../releases)　📖 [使用指南](docs/user_guide_2026-09-03_v0.1_active.md)　🐛 [问题反馈](../../issues)
+🔗 BRAT 安装：`ygnstudio/redquill`　⬇️ [手动下载](../../releases)　📖 [使用指南](docs/user_guide_2026-09-03_v0.1_active.md)　🐛 [问题反馈](../../issues)
 
-与 [RedHead](https://github.com/ygnstudio/obsidian-redhead)（公文排版）同一作者：MDQuill 管「写」的体验，RedHead 管「公文格式」——通用写作能力独立成插件，公文线锁 1.x 不动。
+与 [RedHead](https://github.com/ygnstudio/obsidian-redhead)（公文排版）同源：**合一开发中**——RedQuill = 通用 md 写作体验 + 内置红头公文引擎（GB/T 9704），RedHead 仓库将归档留档；本 README 将于合一完成（v1.0.0）后重写。
 
 ## 功能特性
 
@@ -22,7 +22,7 @@
 ## 目录结构
 
 ```
-mdquill/
+redquill/
 ├── src/
 │   ├── paste_clean.ts     # 粘贴净化纯函数（剥 HTML/空行规整/连续空白折一）
 │   ├── checker.ts         # 中文排版体检八规则引擎 + fixAll 一键修复（纯函数）
@@ -40,9 +40,9 @@ mdquill/
 
 > 完整说明见 **[使用指南](docs/user_guide_2026-09-03_v0.1_active.md)**（体检八规则明细表、粘贴净化与剪贴板权限、写作面板五卡、FAQ）。快速上手：
 
-1. **安装**：BRAT 添加 `ygnstudio/mdquill`（或从 Release 下载 `main.js`/`manifest.json`/`styles.css` 放入 `.obsidian/plugins/mdquill/`）
-2. **日常写**：正常打字；从网页/Word 复制内容过来时，先运行「**MDQuill：粘贴并净化**」再粘贴（或直接粘贴后选中运行「清洗选区」）
-3. **写完自查**：命令「**MDQuill：排版体检**」——看报告点行号跳转；点「一键修复」只改无歧义项（可 Ctrl+Z 逐行撤销）
+1. **安装**：BRAT 添加 `ygnstudio/redquill`（或从 Release 下载 `main.js`/`manifest.json`/`styles.css` 放入 `.obsidian/plugins/redquill/`）
+2. **日常写**：正常打字；从网页/Word 复制内容过来时，先运行「**RedQuill：粘贴并净化**」再粘贴（或直接粘贴后选中运行「清洗选区」）
+3. **写完自查**：命令「**RedQuill：排版体检**」——看报告点行号跳转；点「一键修复」只改无歧义项（可 Ctrl+Z 逐行撤销）
 4. **长文写作**：侧栏羽毛笔图标开「**写作面板**」——字数/标题树点跳/实时体检计数/快捷插入表格引用代码块
 
 命令一览：`打开写作面板` / `排版体检（当前笔记）` / `一键修复排版问题` / `粘贴并净化` / `清洗选区 / 当前段`。

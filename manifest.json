@@ -1,9 +1,9 @@
 {
-  "id": "mdquill",
-  "name": "MDQuill",
+  "id": "redquill",
+  "name": "RedQuill",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "md 写作体验：粘贴即纯净（网页/Word/WPS 格式清洗）、中文排版体检（半角标点/重复标点/中英空格/括号引号/叠字等，一键修复）、右侧栏写作仪表盘（字数/标题树/体检速览/快捷插入）",
+  "description": "写作体验 + 红头公文引擎合一开发中：粘贴净化（网页/Word/WPS 清洗）、中文排版体检（半角标点/重复标点/中英空格等一键修复）、写作仪表盘（字数/标题树/体检速览/快捷插入）；公文线（GB/T 9704 红头/文号/导出 docx）迁入中",
   "author": "ygnstudio",
   "isDesktopOnly": false
 }

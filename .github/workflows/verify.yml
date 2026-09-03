@@ -22,7 +22,9 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
-        run: npm ci
+        # --legacy-peer-deps：obsidian 的 peer 依赖（@codemirror/state@6.5.0）滞后于
+        # 我们为 CM6 扩展对齐的内置线（state ^6.7.2 / view ^6.43.11），peer 冲突属声明滞后，忽略
+        run: npm ci --legacy-peer-deps
 
       - name: Build (main.js)
         run: npm run build

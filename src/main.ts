@@ -37,8 +37,9 @@ import { cleanPaste } from './paste_clean';
 import { lineRole, nextH1, nextH2 } from './gongwen/writeassist';
 /* ---- 通用写作层（v1.0.0 合一注入）：八条体检 / 大纲字数 ---- */
 /* checkDocument 与 gongwen/checker 同名不同职责：本文件内公文体检用 gongwen 版（默认名），通用八条用别名 checkTypo */
-import { checkDocument as checkTypo } from './checker';
+import { checkDocument as checkTypo, fixAll as fixAllTypo } from './checker';
 import { outlineOf, charStats } from './mdast';
+import { ContextGate } from './context';
 
 /* 16 文种模板常量与新建向导纯函数在 templates.ts（v0.11.0 抽出）；re-export 保持既有入口兼容 */
 export { GONGWEN_TEMPLATES, toTemplaterSkeleton } from './gongwen/templates';
@@ -497,7 +498,20 @@ class RedQuillSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl('h2', { text: 'RedQuill 排版预设' });
+    containerEl.createEl('h2', { text: 'RedQuill 设置' });
+
+    /* ---- 通用区（v1.0.0 合一注入） ---- */
+    containerEl.createEl('h3', { text: '通用' });
+    new Setting(containerEl)
+      .setName('自动净化粘贴')
+      .setDesc('开启后，在笔记编辑器里粘贴来自网页/Word/WPS 的内容会自动清洗格式（仅当剪贴板带 HTML 样式时才处理，纯文本直通）。默认关闭，也可随时用命令「粘贴并净化」。')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.autoClean).onChange(async (v) => {
+          this.plugin.settings.autoClean = v;
+          await this.plugin.saveSettings();
+        });
+      });
+    containerEl.createEl('h3', { text: '公文' });
 
     new Setting(containerEl)
       .setName('活动预设')
@@ -1326,8 +1340,15 @@ class SettingsBackupModal extends Modal {
   }
 }
 
+/** 合一设置 = 公文 RedHeadSettings + 通用 autoClean（data.json 合并存储；公文段沿用红 sanitize，通用段单字段布尔校验） */
+interface RedQuillSettings extends RedHeadSettings {
+  autoClean: boolean;
+}
+
 export default class RedQuillPlugin extends Plugin {
-  settings: RedHeadSettings = DEFAULT_SETTINGS;
+  settings: RedQuillSettings = { ...DEFAULT_SETTINGS, autoClean: false };
+  /** 公文上下文手动覆盖闸门（会话级，不入 data.json） */
+  contextGate = new ContextGate();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -1357,7 +1378,7 @@ export default class RedQuillPlugin extends Plugin {
     });
     this.addCommand({
       id: 'paste-clean',
-      name: '粘贴为公文正文（清洗剪贴板格式后插入光标处）',
+      name: '粘贴并净化（清洗剪贴板格式后插入光标处，公文/通用同引擎）',
       editorCallback: (editor) => void this.pasteClean(editor),
     });
     this.addCommand({
@@ -1380,11 +1401,55 @@ export default class RedQuillPlugin extends Plugin {
       name: '安装公文模板到模板文件夹（16 文种，已装 Templater 时附带弹窗版）',
       callback: () => this.installGongwenTemplates(),
     });
+    /* ---- 通用写作层命令（v1.0.0 合一注入） ---- */
+    this.addCommand({
+      id: 'check-typo',
+      name: '排版体检·通用八条（当前笔记：重复标点/半角混用/中英空格/括号引号/直引号/叠字/控制字符/全角空格）',
+      callback: () => this.runCheckTypoOnActive(),
+    });
+    this.addCommand({
+      id: 'fix-typo',
+      name: '一键修复排版·通用八条（当前笔记，仅无歧义项，逐行可撤销）',
+      editorCallback: (editor) => this.runFixTypo(editor),
+    });
+    this.addCommand({
+      id: 'cycle-context',
+      name: '切换公文模式（自动判定 → 强制公文 → 强制通用，循环；会话级，切回自动后按 frontmatter 重判）',
+      callback: () => this.cycleContext(),
+    });
+
+    // 自动净化粘贴（默认关；捕获阶段拦截，仅编辑器内、且剪贴板带 html 痕迹才处理）
+    this.registerDomEvent(
+      document,
+      'paste',
+      (evt: ClipboardEvent) => {
+        if (!this.settings.autoClean) return;
+        const target = evt.target as HTMLElement | null;
+        if (!target || !target.closest('.cm-content')) return;
+        // 找到实际发生粘贴的 md 视图（多窗格时不一定是最新激活的）
+        const hit =
+          this.app.workspace
+            .getLeavesOfType('markdown')
+            .map((leaf) => leaf.view as MarkdownView)
+            .find((v) => v.contentEl.contains(target)) ?? null;
+        if (!hit) return;
+        const html = evt.clipboardData?.getData('text/html') ?? '';
+        const text = evt.clipboardData?.getData('text/plain') ?? '';
+        const cleaned = cleanPaste({ html, text });
+        // 无 html（纯文本粘贴）或清洗无变化 → 不拦截
+        if (!html || !cleaned || cleaned === (text || '').trim()) return;
+        evt.preventDefault();
+        hit.editor.replaceSelection(cleaned);
+        new Notice('RedQuill：已自动净化粘贴（去格式、压空行）。', 4000);
+      },
+      { capture: true },
+    );
   }
 
   async loadSettings(): Promise<void> {
-    const raw = await this.loadData();
-    this.settings = sanitizeSettings(raw, (k) => !!GONGWEN_TEMPLATES[k]);
+    const raw = (await this.loadData()) as Record<string, unknown> | null;
+    const s = sanitizeSettings(raw, (k) => !!GONGWEN_TEMPLATES[k]);
+    this.settings = { ...s, autoClean: raw?.autoClean === true };
     if (!this.allPresets().some((p) => p.id === this.settings.activePresetId)) {
       this.settings.activePresetId = BUILTIN_PRESETS[0].id;
     }
@@ -1658,6 +1723,58 @@ export default class RedQuillPlugin extends Plugin {
     await this.openCheck(mv.file);
   }
 
+  /* ---- 通用八条体检 / 修复 / 上下文切换（v1.0.0 合一注入） ---- */
+
+  /** 通用八条体检：读当前笔记 → issues 弹 CheckReportModal（与公文体检共用弹窗） */
+  private runCheckTypoOnActive(): void {
+    const mv = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!mv?.file) {
+      new Notice('RedQuill：当前没有打开的 md 笔记。');
+      return;
+    }
+    const issues = checkTypo(mv.editor.getValue());
+    if (!issues.length) {
+      new Notice('RedQuill：通用八条体检通过，未发现问题。', 4000);
+      return;
+    }
+    new CheckReportModal(this, mv.file, issues).open();
+  }
+
+  /** 一键修复通用八条：只改有变动的行（replaceRange 逐行，保留 Ctrl+Z 撤销） */
+  private runFixTypo(editor: Editor): void {
+    const mv = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!mv) return;
+    const text = editor.getValue();
+    const fixed = fixAllTypo(text);
+    if (fixed === text) {
+      new Notice('RedQuill：没有可自动修复的问题（只修无歧义项）。', 4000);
+      return;
+    }
+    const oldLines = text.split('\n');
+    const newLines = fixed.split('\n');
+    let changed = 0;
+    const n = Math.min(oldLines.length, newLines.length);
+    for (let i = 0; i < n; i++) {
+      if (oldLines[i] !== newLines[i]) {
+        editor.replaceRange(newLines[i], { line: i, ch: 0 }, { line: i, ch: oldLines[i].length });
+        changed++;
+      }
+    }
+    new Notice(`RedQuill：已修复 ${changed} 行（Ctrl+Z 可逐行撤销）。`, 5000);
+  }
+
+  /** 上下文三态循环：auto（frontmatter 自动判定）→ 强制公文 → 强制通用 → auto */
+  private cycleContext(): void {
+    const next: 'auto' | 'gongwen' | 'generic' =
+      this.contextGate.mode === 'auto' ? 'gongwen' : this.contextGate.mode === 'gongwen' ? 'generic' : 'auto';
+    this.contextGate.setMode(next);
+    const label = next === 'auto' ? '自动判定（按 frontmatter 是否含公文标记）' : next === 'gongwen' ? '强制公文' : '强制通用';
+    new Notice(
+      `RedQuill：上下文 → ${label}${next === 'auto' ? '' : '。再次运行本命令可切回自动'}`,
+      5000,
+    );
+  }
+
   /* ---- v0.8.0 设置导出 / 导入（随库同步，多机换机同版式） ---- */
 
   /** 导出全部设置到 vault 根 JSON：{app, kind, version, exportedAt, settings} */
@@ -1692,13 +1809,12 @@ export default class RedQuillPlugin extends Plugin {
   async importSettingsText(json: string, fromName: string): Promise<number> {
     const raw = JSON.parse(json) as any;
     if (!raw || typeof raw !== 'object') throw new Error('JSON 顶层不是对象');
-    const s =
-      raw.settings && typeof raw.settings === 'object' && raw.kind === 'redquill-settings' ? raw.settings : raw;
+    const s = (raw.settings && typeof raw.settings === 'object' && raw.kind === 'redquill-settings' ? raw.settings : raw) as Record<string, unknown> | null;
     const merged = sanitizeSettings(
       { ...s, activePresetId: s?.activePresetId ?? this.settings.activePresetId },
       (k) => !!GONGWEN_TEMPLATES[k],
     );
-    this.settings = merged;
+    this.settings = { ...merged, autoClean: s?.autoClean === true };
     if (!this.allPresets().some((p) => p.id === this.settings.activePresetId)) {
       this.settings.activePresetId = BUILTIN_PRESETS[0].id;
     }

@@ -21,15 +21,16 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var main_exports = {};
 __export(main_exports, {
   GONGWEN_TEMPLATES: () => GONGWEN_TEMPLATES,
+  RedQuillPlugin: () => RedQuillPlugin,
   VIEW_TYPE_PANEL: () => VIEW_TYPE_PANEL,
   VIEW_TYPE_PREVIEW: () => VIEW_TYPE_PREVIEW,
   VIEW_TYPE_WRITEASSIST: () => VIEW_TYPE_WRITEASSIST,
   applyFrontmatter: () => applyFrontmatter,
-  default: () => RedQuillPlugin,
+  default: () => main_default,
   toTemplaterSkeleton: () => toTemplaterSkeleton
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // node_modules/marked/lib/marked.esm.js
 function _getDefaults() {
@@ -22398,247 +22399,6 @@ async function buildDocxBlob(blocks, preset, opts) {
   );
 }
 
-// src/gongwen/preview.ts
-function esc(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function cssFont(st, fallbackKey) {
-  const chain = roleFontChain(st, fallbackKey).map((f) => `"${f}"`);
-  return `"${LATIN_FONT}", ${chain.join(", ")}`;
-}
-function roleCss(cls, st, key, linePt, extra = "") {
-  return `.${cls} { font-family: ${cssFont(st, key)}; font-size: ${st.sizePt}pt; font-weight: ${st.bold ? 700 : 400}; text-align: ${st.align === "center" ? "center" : "left"}; line-height: ${linePt}pt;${st.indentChars ? ` text-indent: ${st.indentChars}em;` : ""}${extra} }`;
-}
-function bodyHtml(text, boldFirst) {
-  const m = text.match(/^([^。]+。)?([\s\S]*)$/);
-  const first = m?.[1] ?? "";
-  const rest = m?.[2] ?? "";
-  if (boldFirst && first) return `<b>${esc(first)}</b>${esc(rest)}`;
-  return esc(text);
-}
-function pageNumberHtml(cfg) {
-  if (!cfg || cfg.style === "none") return "";
-  const sample = cfg.style === "gongwen" ? "\u2014 1 \u2014" : cfg.style === "dash" ? "- 1 -" : cfg.style === "plain" ? "1" : cfg.style === "cnPage" ? "\u7B2C 1 \u9875" : "\u7B2C 1 \u9875 / \u5171 3 \u9875";
-  const align = cfg.style === "gongwen" ? "right" : cfg.align;
-  const family = `"${LATIN_FONT}", ${PAGE_NUMBER_FONT.map((f) => `"${f}"`).join(", ")}`;
-  return `<div class="rg-pagenum" style="text-align:${align}; font-size:${cfg.sizePt}pt; font-family:${family};">${esc(sample)}</div>`;
-}
-function redHeadHtml(meta, logoUrl) {
-  const hasAny = Object.values(meta).some((v) => !!v) || !!logoUrl;
-  if (!hasAny) return "";
-  const chain = (fonts) => fonts.map((f) => `"${f}"`).join(", ");
-  const out = ['<div class="rg-redhead">'];
-  const notice = (t) => `<div style="font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.notice.font)}; font-size:${RED_HEAD_STYLE.notice.sizePt}pt; line-height:28pt;">${esc(t)}</div>`;
-  if (logoUrl)
-    out.push(
-      `<div style="text-align:center; margin-bottom:6pt;"><img src="${esc(logoUrl)}" style="width:40mm; height:auto;" alt="\u673A\u5173\u6807\u5FD7"></div>`
-    );
-  if (meta.copyNumber) out.push(notice(meta.copyNumber));
-  if (meta.secretLevel) out.push(notice(meta.secretLevel));
-  if (meta.urgency) out.push(notice(meta.urgency));
-  if (meta.agency) {
-    const agencies = splitAgencies(meta.agency);
-    const sizePt = fitAgencySizePt(agencies);
-    agencies.forEach((ag, i) => {
-      out.push(
-        `<div style="font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.agency.font)}; font-size:${sizePt}pt; line-height:44pt; color:#${RED_COLOR}; text-align:center;${i === 0 ? " margin-top:6pt;" : ""}">${esc(ag)}</div>`
-      );
-    });
-  }
-  if (meta.docNumber || meta.signer) {
-    const numFont = `font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.number.font)}; font-size:${RED_HEAD_STYLE.number.sizePt}pt; line-height:28pt;`;
-    if (meta.signer) {
-      out.push(
-        `<div style="${numFont} display:flex; justify-content:space-between; margin-top:28pt;"><span style="margin-left:1em;">${esc(meta.docNumber ?? "")}</span><span style="margin-right:1em;">\u7B7E\u53D1\u4EBA\uFF1A${esc(meta.signer)}</span></div>`
-      );
-    } else {
-      out.push(`<div style="${numFont} text-align:center; margin-top:28pt;">${esc(meta.docNumber ?? "")}</div>`);
-    }
-  }
-  out.push(
-    `<div style="border-bottom:${(RED_HEAD_STYLE.lineWidthMm * 3).toFixed(1)}pt solid #${RED_COLOR}; margin-top:4mm; margin-bottom:16pt;"></div>`
-  );
-  out.push("</div>");
-  return out.join("\n");
-}
-function recipientsHtml(text) {
-  const t = /[：:]$/.test(text.trim()) ? text.trim() : `${text.trim()}\uFF1A`;
-  return `<div class="rg-recipients">${esc(t)}</div>`;
-}
-function attachmentsHtml(text, attachIndentChars = STRUCT_DEFAULTS.attachIndentChars) {
-  const lines = text.split("/").map((s) => s.trim()).filter(Boolean);
-  return lines.map((l, i) => {
-    const label = lines.length > 1 && !/^[\d１-９]/.test(l) ? `\u9644\u4EF6${i + 1}\uFF1A${l}` : `\u9644\u4EF6\uFF1A${l}`;
-    return `<div class="rg-attach" style="margin-left:${attachIndentChars}em;">${esc(label)}</div>`;
-  }).join("\n");
-}
-function sealHtml(sealUrl, dateText, preset, struct) {
-  const bodyEm = preset.roles.body.sizePt;
-  const sealWEm = SEAL_STYLE.sizeMm / 25.4 * 72 / bodyEm;
-  const dateWEm = textWidthChars(dateText);
-  const right = Math.max(0, (sealWEm - dateWEm) / 2);
-  const bottom = (preset.linePt * 0.3).toFixed(2);
-  return `<img class="rg-seal" src="${esc(sealUrl)}" alt="\u5370\u7AE0" style="position:absolute; width:${sealWEm.toFixed(2)}em; height:auto; right:${right.toFixed(2)}em; bottom:${bottom}pt; z-index:10;">`;
-}
-function closingHtml(meta, preset, struct = STRUCT_DEFAULTS, sealUrl) {
-  const hasSignBlock = !!(meta.signature || meta.date);
-  if (!hasSignBlock && !meta.notes) return "";
-  const gap = `${preset.linePt}pt`;
-  const out = ['<div class="rg-closing" style="position:relative;">'];
-  if (hasSignBlock) {
-    const align = struct.signatureAlign;
-    const justify = align === "left" ? "flex-start" : align === "center" ? "center" : "flex-end";
-    const side = align === "left" ? ` margin-left:${struct.signatureLeftChars}em;` : align === "right" ? ` margin-right:${struct.signatureRightChars}em;` : "";
-    const innerAlign = align === "left" ? "flex-start" : "center";
-    out.push(`<div style="display:flex; justify-content:${justify}; margin-top:${gap};${side}">`);
-    out.push(`<div style="display:inline-flex; flex-direction:column; align-items:${innerAlign};">`);
-    if (meta.signature) out.push(`<div>${esc(meta.signature)}</div>`);
-    if (meta.date) out.push(`<div>${esc(meta.date)}</div>`);
-    out.push("</div></div>");
-  }
-  if (meta.notes) {
-    const n = meta.notes.trim();
-    const wrapped = /^[（(]/.test(n) ? n : `\uFF08${n}\uFF09`;
-    out.push(
-      `<div style="margin-left:${struct.notesIndentChars}em; margin-top:${gap};">${esc(wrapped)}</div>`
-    );
-  }
-  if (sealUrl && meta.date) out.push(sealHtml(sealUrl, meta.date, preset, struct));
-  out.push("</div>");
-  return out.join("\n");
-}
-function colophonHtml(meta, preset, struct = STRUCT_DEFAULTS) {
-  if (!meta.cc && !meta.printOrg && !meta.printDate && !meta.printCopies) return "";
-  const sizePt = STRUCT_STYLE.colophonSizePt;
-  const base = `padding:2pt 0; font-size:${sizePt}pt;`;
-  const flexGap = `${preset.linePt}pt`;
-  const rows = [];
-  let idx = 0;
-  const total = (meta.cc ? 1 : 0) + (meta.printOrg || meta.printDate ? 1 : 0) + (meta.printCopies ? 1 : 0);
-  const topBorder = () => {
-    const b = idx === 0 ? "border-top:1.5pt solid #000;" : "border-top:0.75pt solid #000;";
-    const last = idx === total - 1 ? "border-bottom:1.5pt solid #000;" : "";
-    idx++;
-    return b + last;
-  };
-  if (meta.cc) {
-    const t = /[。！？]$/.test(meta.cc.trim()) ? meta.cc.trim() : `${meta.cc.trim()}\u3002`;
-    rows.push(`<div style="${topBorder()}${base} padding-left:${struct.colophonLeftChars}em;">\u6284\u9001\uFF1A${esc(t)}</div>`);
-  }
-  if (meta.printOrg || meta.printDate) {
-    const pd = /印发$/.test(meta.printDate?.trim() ?? "") ? meta.printDate.trim() : `${meta.printDate?.trim() ?? ""}\u5370\u53D1`;
-    rows.push(
-      `<div style="${topBorder()}${base} display:flex; justify-content:space-between;"><span style="margin-left:${struct.colophonLeftChars}em;">${esc(meta.printOrg ?? "")}</span><span style="margin-right:${struct.printRightChars}em;">${esc(pd)}</span></div>`
-    );
-  }
-  if (meta.printCopies) {
-    const c = meta.printCopies.trim();
-    const label = /印/.test(c) ? c : `\u5370${c}\u4EFD`;
-    rows.push(`<div style="${topBorder()}${base} text-align:right; padding-right:${struct.copiesRightChars}em;">${esc(label)}</div>`);
-  }
-  return [`<div class="rg-colophon" style="margin-top:${flexGap};">`, ...rows, "</div>"].join("\n");
-}
-function tableHtml(t, preset) {
-  const st = preset.roles.table;
-  const family = cssFont(st, "table").replace(/"/g, "&quot;");
-  const base = `font-family:${family}; font-size:${st.sizePt}pt; font-weight:${st.bold ? 700 : 400}; padding:3pt 4pt; border:0.5pt solid #000; word-break:break-all;`;
-  const al = (a) => a === "left" ? "left" : a === "right" ? "right" : "center";
-  const trs = [];
-  const ths = t.header.map((h, i) => `<th style="${base}font-weight:700; text-align:center;">${esc(h)}</th>`).join("");
-  trs.push(`<tr>${ths}</tr>`);
-  for (const r of t.rows)
-    trs.push(
-      `<tr>${r.map((c, i) => {
-        const txt = c.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/[*_`]/g, "");
-        return `<td style="${base} text-align:${al(t.align?.[i])};">${esc(txt)}</td>`;
-      }).join("")}</tr>`
-    );
-  return `<table class="rg-table" style="border-collapse:collapse; width:100%; table-layout:fixed; margin:${preset.linePt}pt 0;">${trs.join("")}</table>`;
-}
-function blockHtml(b, preset, boldFirst) {
-  switch (b.kind) {
-    case "docTitle":
-      return `<div class="rg-title">${b.text.split("\n").map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
-    case "h1":
-      return `<div class="rg-h1">${esc(b.text)}</div>`;
-    case "h2":
-      return `<div class="rg-h2">${esc(b.text)}</div>`;
-    case "h3":
-      return `<div class="rg-h3">${esc(b.text)}</div>`;
-    case "table":
-      return b.table && b.table.rows.length ? tableHtml(b.table, preset) : "";
-    default:
-      return `<div class="rg-para">${bodyHtml(b.text, boldFirst)}</div>`;
-  }
-}
-function renderAttach(attach, preset, boldFirst) {
-  const out = ['<div class="rg-attach-break">\u53E6\u9762 \xB7 \u9644\u4EF6</div>', '<div class="rg-attach-section">'];
-  let firstHeadingIdx = -1;
-  for (let i = 0; i < attach.length; i++) {
-    if (attach[i].kind === "docTitle" || attach[i].kind === "h1" || attach[i].kind === "h2") {
-      firstHeadingIdx = i;
-      break;
-    }
-  }
-  if (firstHeadingIdx >= 0) {
-    const { mark, title } = splitAttachTitle(attach[firstHeadingIdx].text);
-    out.push(`<div class="rg-attach-mark">${esc(mark)}</div>`);
-    if (title) out.push(`<div class="rg-title">${esc(title)}</div>`);
-  } else {
-    out.push('<div class="rg-attach-mark">\u9644\u4EF6</div>');
-  }
-  for (let i = 0; i < attach.length; i++) {
-    if (i === firstHeadingIdx) continue;
-    out.push(blockHtml(attach[i], preset, boldFirst));
-  }
-  out.push("</div>");
-  return out.join("\n");
-}
-function renderPreview(blocks, preset, opts) {
-  const boldFirst = !!opts?.firstSentenceBold;
-  const struct = { ...STRUCT_DEFAULTS, ...opts?.struct };
-  const meta = opts?.meta;
-  const body = [];
-  if (meta || opts?.logoUrl) body.push(redHeadHtml(meta ?? {}, opts?.logoUrl));
-  for (const b of blocks) {
-    body.push(blockHtml(b, preset, boldFirst));
-    if (b.kind === "docTitle" && meta?.recipients) body.push(recipientsHtml(meta.recipients));
-  }
-  if (meta) {
-    if (meta.attachments) body.push(attachmentsHtml(meta.attachments, struct.attachIndentChars));
-    const closing = closingHtml(meta, preset, struct, opts?.sealUrl);
-    if (closing) body.push(closing);
-  }
-  if (opts?.attach && opts.attach.length) body.push(renderAttach(opts.attach, preset, boldFirst));
-  if (meta) {
-    const colophon = colophonHtml(meta, preset, struct);
-    if (colophon) body.push(colophon);
-  }
-  const css = `
-.rg-page {
-  width: 210mm;
-  min-height: 297mm;
-  padding: ${preset.page.top}mm ${preset.page.right}mm ${preset.page.bottom}mm ${preset.page.left}mm;
-  background: #fff; color: #000; box-sizing: border-box;
-  font-family: ${cssFont(preset.roles.body, "body")};
-  font-size: ${preset.roles.body.sizePt}pt;
-  line-height: ${preset.linePt}pt;
-}
-${roleCss("rg-title", preset.roles.docTitle, "docTitle", preset.titleLinePt, " margin: 0 0 14pt;")}
-${roleCss("rg-h1", preset.roles.h1, "h1", preset.linePt)}
-${roleCss("rg-h2", preset.roles.h2, "h2", preset.linePt)}
-${roleCss("rg-h3", preset.roles.h3, "h3", preset.linePt)}
-.rg-para { text-align: justify;${preset.roles.body.indentChars ? ` text-indent: ${preset.roles.body.indentChars}em;` : ""} }
-.rg-recipients { margin-top: ${preset.linePt}pt; }
-.rg-attach { margin-top: ${preset.linePt}pt; }
-.rg-pagenum { margin-top: 12pt; }
-.rg-attach-mark { font-family: ${cssFont(preset.roles.h1, "h1").replace(/"/g, "&quot;")}; font-size: ${preset.roles.body.sizePt}pt; font-weight: 400; margin-top: ${preset.linePt}pt; }
-.rg-attach-break { margin-top: ${Math.round(preset.linePt * 3)}pt; padding: 3pt 0; border-top: 1px dashed #99a; text-align: center; color: #99a; font-size: 10.5pt; letter-spacing: 0.4em; }
-.rg-attach-section .rg-title { margin-top: ${preset.linePt}pt; }
-`;
-  return `<style>${css}</style><div class="rg-page">${body.join("\n")}${pageNumberHtml(preset.pageNumber)}</div>`;
-}
-
 // src/gongwen/settings.ts
 var DEFAULT_SETTINGS = {
   activePresetId: "gongwen-standard",
@@ -23101,78 +22861,6 @@ function cleanPaste(input) {
   return tidyLines(lines);
 }
 
-// src/gongwen/writeassist.ts
-var CN = ["\u96F6", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"];
-function cnNum(n) {
-  if (n <= 0) return "";
-  if (n <= 10) return CN[n];
-  const tens = Math.floor(n / 10);
-  const ones = n % 10;
-  return (tens === 1 ? "\u5341" : CN[tens] + "\u5341") + (ones ? CN[ones] : "");
-}
-function lineRole(line) {
-  const raw = line ?? "";
-  const t = raw.trim();
-  if (!t) return { role: "empty", label: "\u7A7A\u884C\uFF08\u6BB5\u843D\u5206\u9694\uFF09" };
-  if (/^-{3,}\s*$/.test(t)) return { role: "fm", label: "frontmatter \u680F\u7EBF\uFF08---\uFF09", tip: "\u5F00\u680F\u540E\u5199 rh-* \u516C\u6587\u5C5E\u6027\uFF1B\u6B63\u6587\u4E2D\u5355\u72EC\u4E00\u884C --- \u4F1A\u5F00\u542F\u9644\u4EF6\u533A\uFF08\u53E6\u9762\u8D77\u6392\uFF09" };
-  if (/^rh-[A-Za-z][A-Za-z0-9]*\s*:/.test(t) || /^[A-Za-z_][A-Za-z0-9_]*\s*:/.test(t))
-    return { role: "fm", label: "frontmatter \u5C5E\u6027\u884C", tip: "rh- \u524D\u7F00\u4E3A\u516C\u6587\u5C5E\u6027\uFF1B\u666E\u901A yaml \u952E\u4E0D\u5F71\u54CD\u6392\u7248" };
-  if (/^#\s+\S/.test(t)) return { role: "docTitle", label: "\u6587\u4EF6\u6807\u9898\uFF08#\uFF09", tip: "\u5C0F\u6807\u5B8B\u4E8C\u53F7\u5C45\u4E2D\uFF1B\u6574\u7BC7\u53EA\u53D6\u7B2C\u4E00\u4E2A #\uFF0C\u6B63\u6587\u91CC\u7684\u7EA7\u6B21\u8BF7\u7528 ## \u8D77" };
-  if (/^##\s+\S/.test(t)) return { role: "h1", label: "\u4E00\u7EA7\u6807\u9898\uFF08## \u4E00\u3001\uFF09", tip: "\u9ED1\u4F53\u4E09\u53F7\u9876\u683C\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C\u4E00\u3001\u4E8C\u3001\u4E09\u2026\u300D" };
-  if (/^###\s+\S/.test(t)) return { role: "h2", label: "\u4E8C\u7EA7\u6807\u9898\uFF08### \uFF08\u4E00\uFF09\uFF09", tip: "\u6977\u4F53\u4E09\u53F7\u9876\u683C\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C\uFF08\u4E00\uFF09\uFF08\u4E8C\uFF09\u2026\u300D" };
-  if (/^####\s+\S/.test(t)) return { role: "h3", label: "\u4E09\u7EA7\u6807\u9898\uFF08#### 1.\uFF09", tip: "\u4EFF\u5B8B\u4E09\u53F7\u52A0\u7C97\u3001\u9996\u884C\u7F29\u8FDB 2 \u5B57\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C1. 2. \u2026\u300D" };
-  if (/^#{5,}\s+\S/.test(t))
-    return { role: "plain", label: "\u8FC7\u6DF1\u6807\u9898\uFF08#####+\uFF09", tip: "\u516C\u6587\u7EA7\u6B21\u53EA\u5230\u4E09\u7EA7\uFF08# \u6807\u9898 / ## \u4E00\u3001/ ### \uFF08\u4E00\uFF09/ #### 1.\uFF09\uFF0C\u66F4\u6DF1\u7684\u884C\u6309\u6B63\u6587\u5904\u7406" };
-  const out = detectOutlineHeading(t);
-  if (out === "h1") return { role: "bare-h1", label: "\u4E00\u7EA7\u6807\u9898\uFF08\u88F8\u5199\u300C\u4E00\u3001\u300D\u8BC6\u522B\uFF09", tip: "\u5DF2\u81EA\u52A8\u6309\u9ED1\u4F53\u4E09\u53F7\u4E00\u7EA7\u6807\u9898\u6392\u7248\uFF1B\u4E5F\u53EF\u5199\u6210 ## \u524D\u7F00\u66F4\u663E\u5F0F" };
-  if (/^[一二三四五六七八九十]{1,3}、/.test(t))
-    return { role: "bare-h1-body", label: "\u6B63\u6587\u6BB5\uFF08\u6BB5\u9996\u5E8F\u6570\u300C\u4E00\u3001\u2026\u300D\uFF09", tip: "\u884C\u5185\u542B\u53E5\u53F7 \u2192 \u6309\u6B63\u6587\u6E32\u67D3\uFF08\u9996\u884C\u7F29\u8FDB 2 \u5B57\uFF09\u3002\u6807\u9898\u884C\u5EFA\u8BAE\u4E0D\u5199\u53E5\u53F7" };
-  if (/^（[一二三四五六七八九十]{1,3}）/.test(t) && !t.includes("\u3002"))
-    return { role: "suggest-h2", label: "\u7591\u4F3C\u4E8C\u7EA7\u6807\u9898\uFF08\uFF08\u4E00\uFF09\u2026\uFF09", tip: "\u88F8\u5199\uFF08\u4E00\uFF09\u4E0D\u8BC6\u522B\u5C42\u7EA7\uFF0C\u8BF7\u52A0 ### \u524D\u7F00\uFF08\u6977\u4F53\u4E09\u53F7\uFF09\u6216\u76F4\u63A5\u63A5\u6B63\u6587" };
-  if (/^\d{1,2}[.、]/.test(t) && !t.includes("\u3002"))
-    return { role: "suggest-h3", label: "\u7591\u4F3C\u4E09\u7EA7\u6807\u9898\uFF081. \u2026\uFF09", tip: "\u88F8\u5199 1. \u4E0D\u8BC6\u522B\u5C42\u7EA7\uFF0C\u8BF7\u52A0 #### \u524D\u7F00\uFF08\u4EFF\u5B8B\u52A0\u7C97\u3001\u7F29\u8FDB 2 \u5B57\uFF09\u6216\u76F4\u63A5\u63A5\u6B63\u6587" };
-  if (/^\s*\|/.test(t)) return { role: "table", label: "md \u8868\u683C", tip: "\u8868\u5934\u9996\u884C\u52A0\u7C97\u5C45\u4E2D\uFF0C\u5217\u5BF9\u9F50\u8BA4 :-- \u5DE6 / :--: \u4E2D / --: \u53F3" };
-  if (/^>\s?/.test(t)) return { role: "quote", label: "\u5F15\u7528\u884C\uFF08> \u5143\u4FE1\u606F\uFF09", tip: "\u5F15\u7528\u5757\u4E0D\u8FDB\u6B63\u6587\uFF08\u4F5C\u5143\u4FE1\u606F/\u5907\u6CE8\u7528\uFF09" };
-  if (/^[-*+]\s/.test(t)) return { role: "list", label: "\u5217\u8868\u9879", tip: "\u6E32\u67D3\u65F6\u6761\u76EE\u62CD\u5E73\u6210\u6B63\u6587\u6BB5\u843D\uFF1B\u516C\u6587\u5E8F\u53F7\u8BF7\u76F4\u63A5\u5199\u5728\u539F\u6587\uFF08\u4E00\u3001/\uFF08\u4E00\uFF09/1.\uFF09" };
-  if (/^```/.test(t)) return { role: "code", label: "\u4EE3\u7801\u5757", tip: "\u4EE3\u7801\u5757\u4E0D\u8FDB\u6B63\u6587" };
-  if (/^[\s\u3000\u00A0]/.test(raw) && !/^\s*\|/.test(raw))
-    return { role: "body-indent", label: "\u6B63\u6587\u6BB5\uFF08\u884C\u9996\u6709\u624B\u6572\u7A7A\u683C\uFF09", tip: "\u9996\u884C\u7F29\u8FDB\u7531\u6392\u7248\u81EA\u52A8\u751F\u6210\uFF082 \u5B57\uFF09\uFF0C\u884C\u9996\u7A7A\u683C\u8BF7\u5220\u9664\uFF0C\u907F\u514D\u5BFC\u51FA docx \u51FA\u73B0\u591A\u4F59\u7A7A\u767D" };
-  return { role: "body", label: "\u6B63\u6587\u6BB5", tip: "\u9996\u884C\u81EA\u52A8\u7F29\u8FDB 2 \u5B57\u3001\u4E24\u7AEF\u5BF9\u9F50\uFF1B\u6BB5\u4E0E\u6BB5\u4E4B\u95F4\u7559\u4E00\u4E2A\u7A7A\u884C" };
-}
-function isH1Line(line) {
-  const t = line.trim();
-  return /^##\s+\S/.test(t) || detectOutlineHeading(t) === "h1";
-}
-function isH2Line(line) {
-  return /^###\s+\S/.test(line.trim());
-}
-function nextH1(lines) {
-  let n = 0;
-  let inFm = false;
-  for (const ln of lines) {
-    const t = ln.trim();
-    if (/^-{3,}\s*$/.test(t)) {
-      inFm = !inFm;
-      continue;
-    }
-    if (!inFm && isH1Line(ln)) n += 1;
-  }
-  return cnNum(n + 1) + "\u3001";
-}
-function nextH2(lines) {
-  let n = 0;
-  let inFm = false;
-  for (const ln of lines) {
-    const t = ln.trim();
-    if (/^-{3,}\s*$/.test(t)) {
-      inFm = !inFm;
-      continue;
-    }
-    if (!inFm && isH2Line(ln)) n += 1;
-  }
-  return `\uFF08${CN[n + 1]}\uFF09`;
-}
-
 // src/checker.ts
 var CJK = "\\u3400-\\u4DBF\\u4E00-\\u9FFF";
 var CJK_PUNCT = "\uFF0C\u3002\u3001\uFF1B\uFF1A\uFF1F\uFF01\uFF08\uFF09\u3010\u3011\u300A\u300B\u201C\u201D\u2018\u2019\xB7\u2026\u2014";
@@ -23345,6 +23033,888 @@ function fixAll(md0) {
   return out.join("\n");
 }
 
+// src/context.ts
+var FLAT_RE = /^rh-([A-Za-z]+)\s*:\s*(.*)$/;
+var NEST_HEAD_RE = /^redhead\s*:/;
+var NEST_KEY_RE = /^\s+([A-Za-z_]+)\s*:\s*(.*)$/;
+var unquote = (s) => s.trim().replace(/^["']|["']$/g, "");
+var isRedKey = (k) => RED_HEAD_KEYS.includes(k);
+function frontmatterIsGongwen(fmText) {
+  let inNested = false;
+  for (const raw of fmText.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (!line.trim()) continue;
+    if (!/^\s/.test(line)) {
+      inNested = NEST_HEAD_RE.test(line);
+      const flat = line.match(FLAT_RE);
+      if (flat && isRedKey(flat[1]) && unquote(flat[2])) return true;
+      continue;
+    }
+    if (!inNested) continue;
+    const kv = line.match(NEST_KEY_RE);
+    if (kv && isRedKey(kv[1]) && unquote(kv[2])) return true;
+  }
+  return false;
+}
+function detectContext(md) {
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return "generic";
+  return frontmatterIsGongwen(m[1]) ? "gongwen" : "generic";
+}
+var ContextGate = class {
+  constructor() {
+    this.mode = "auto";
+  }
+  setMode(m) {
+    this.mode = m;
+  }
+  /** 生效上下文：手动强制 > frontmatter 自动判定 */
+  resolve(md) {
+    if (this.mode === "gongwen") return "gongwen";
+    if (this.mode === "generic") return "generic";
+    return detectContext(md);
+  }
+};
+
+// src/views/preview_view.ts
+var import_obsidian = require("obsidian");
+
+// src/gongwen/preview.ts
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function cssFont(st, fallbackKey) {
+  const chain = roleFontChain(st, fallbackKey).map((f) => `"${f}"`);
+  return `"${LATIN_FONT}", ${chain.join(", ")}`;
+}
+function roleCss(cls, st, key, linePt, extra = "") {
+  return `.${cls} { font-family: ${cssFont(st, key)}; font-size: ${st.sizePt}pt; font-weight: ${st.bold ? 700 : 400}; text-align: ${st.align === "center" ? "center" : "left"}; line-height: ${linePt}pt;${st.indentChars ? ` text-indent: ${st.indentChars}em;` : ""}${extra} }`;
+}
+function bodyHtml(text, boldFirst) {
+  const m = text.match(/^([^。]+。)?([\s\S]*)$/);
+  const first = m?.[1] ?? "";
+  const rest = m?.[2] ?? "";
+  if (boldFirst && first) return `<b>${esc(first)}</b>${esc(rest)}`;
+  return esc(text);
+}
+function pageNumberHtml(cfg) {
+  if (!cfg || cfg.style === "none") return "";
+  const sample = cfg.style === "gongwen" ? "\u2014 1 \u2014" : cfg.style === "dash" ? "- 1 -" : cfg.style === "plain" ? "1" : cfg.style === "cnPage" ? "\u7B2C 1 \u9875" : "\u7B2C 1 \u9875 / \u5171 3 \u9875";
+  const align = cfg.style === "gongwen" ? "right" : cfg.align;
+  const family = `"${LATIN_FONT}", ${PAGE_NUMBER_FONT.map((f) => `"${f}"`).join(", ")}`;
+  return `<div class="rg-pagenum" style="text-align:${align}; font-size:${cfg.sizePt}pt; font-family:${family};">${esc(sample)}</div>`;
+}
+function redHeadHtml(meta, logoUrl) {
+  const hasAny = Object.values(meta).some((v) => !!v) || !!logoUrl;
+  if (!hasAny) return "";
+  const chain = (fonts) => fonts.map((f) => `"${f}"`).join(", ");
+  const out = ['<div class="rg-redhead">'];
+  const notice = (t) => `<div style="font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.notice.font)}; font-size:${RED_HEAD_STYLE.notice.sizePt}pt; line-height:28pt;">${esc(t)}</div>`;
+  if (logoUrl)
+    out.push(
+      `<div style="text-align:center; margin-bottom:6pt;"><img src="${esc(logoUrl)}" style="width:40mm; height:auto;" alt="\u673A\u5173\u6807\u5FD7"></div>`
+    );
+  if (meta.copyNumber) out.push(notice(meta.copyNumber));
+  if (meta.secretLevel) out.push(notice(meta.secretLevel));
+  if (meta.urgency) out.push(notice(meta.urgency));
+  if (meta.agency) {
+    const agencies = splitAgencies(meta.agency);
+    const sizePt = fitAgencySizePt(agencies);
+    agencies.forEach((ag, i) => {
+      out.push(
+        `<div style="font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.agency.font)}; font-size:${sizePt}pt; line-height:44pt; color:#${RED_COLOR}; text-align:center;${i === 0 ? " margin-top:6pt;" : ""}">${esc(ag)}</div>`
+      );
+    });
+  }
+  if (meta.docNumber || meta.signer) {
+    const numFont = `font-family:&quot;${LATIN_FONT}&quot;, ${chain(RED_HEAD_STYLE.number.font)}; font-size:${RED_HEAD_STYLE.number.sizePt}pt; line-height:28pt;`;
+    if (meta.signer) {
+      out.push(
+        `<div style="${numFont} display:flex; justify-content:space-between; margin-top:28pt;"><span style="margin-left:1em;">${esc(meta.docNumber ?? "")}</span><span style="margin-right:1em;">\u7B7E\u53D1\u4EBA\uFF1A${esc(meta.signer)}</span></div>`
+      );
+    } else {
+      out.push(`<div style="${numFont} text-align:center; margin-top:28pt;">${esc(meta.docNumber ?? "")}</div>`);
+    }
+  }
+  out.push(
+    `<div style="border-bottom:${(RED_HEAD_STYLE.lineWidthMm * 3).toFixed(1)}pt solid #${RED_COLOR}; margin-top:4mm; margin-bottom:16pt;"></div>`
+  );
+  out.push("</div>");
+  return out.join("\n");
+}
+function recipientsHtml(text) {
+  const t = /[：:]$/.test(text.trim()) ? text.trim() : `${text.trim()}\uFF1A`;
+  return `<div class="rg-recipients">${esc(t)}</div>`;
+}
+function attachmentsHtml(text, attachIndentChars = STRUCT_DEFAULTS.attachIndentChars) {
+  const lines = text.split("/").map((s) => s.trim()).filter(Boolean);
+  return lines.map((l, i) => {
+    const label = lines.length > 1 && !/^[\d１-９]/.test(l) ? `\u9644\u4EF6${i + 1}\uFF1A${l}` : `\u9644\u4EF6\uFF1A${l}`;
+    return `<div class="rg-attach" style="margin-left:${attachIndentChars}em;">${esc(label)}</div>`;
+  }).join("\n");
+}
+function sealHtml(sealUrl, dateText, preset, struct) {
+  const bodyEm = preset.roles.body.sizePt;
+  const sealWEm = SEAL_STYLE.sizeMm / 25.4 * 72 / bodyEm;
+  const dateWEm = textWidthChars(dateText);
+  const right = Math.max(0, (sealWEm - dateWEm) / 2);
+  const bottom = (preset.linePt * 0.3).toFixed(2);
+  return `<img class="rg-seal" src="${esc(sealUrl)}" alt="\u5370\u7AE0" style="position:absolute; width:${sealWEm.toFixed(2)}em; height:auto; right:${right.toFixed(2)}em; bottom:${bottom}pt; z-index:10;">`;
+}
+function closingHtml(meta, preset, struct = STRUCT_DEFAULTS, sealUrl) {
+  const hasSignBlock = !!(meta.signature || meta.date);
+  if (!hasSignBlock && !meta.notes) return "";
+  const gap = `${preset.linePt}pt`;
+  const out = ['<div class="rg-closing" style="position:relative;">'];
+  if (hasSignBlock) {
+    const align = struct.signatureAlign;
+    const justify = align === "left" ? "flex-start" : align === "center" ? "center" : "flex-end";
+    const side = align === "left" ? ` margin-left:${struct.signatureLeftChars}em;` : align === "right" ? ` margin-right:${struct.signatureRightChars}em;` : "";
+    const innerAlign = align === "left" ? "flex-start" : "center";
+    out.push(`<div style="display:flex; justify-content:${justify}; margin-top:${gap};${side}">`);
+    out.push(`<div style="display:inline-flex; flex-direction:column; align-items:${innerAlign};">`);
+    if (meta.signature) out.push(`<div>${esc(meta.signature)}</div>`);
+    if (meta.date) out.push(`<div>${esc(meta.date)}</div>`);
+    out.push("</div></div>");
+  }
+  if (meta.notes) {
+    const n = meta.notes.trim();
+    const wrapped = /^[（(]/.test(n) ? n : `\uFF08${n}\uFF09`;
+    out.push(
+      `<div style="margin-left:${struct.notesIndentChars}em; margin-top:${gap};">${esc(wrapped)}</div>`
+    );
+  }
+  if (sealUrl && meta.date) out.push(sealHtml(sealUrl, meta.date, preset, struct));
+  out.push("</div>");
+  return out.join("\n");
+}
+function colophonHtml(meta, preset, struct = STRUCT_DEFAULTS) {
+  if (!meta.cc && !meta.printOrg && !meta.printDate && !meta.printCopies) return "";
+  const sizePt = STRUCT_STYLE.colophonSizePt;
+  const base = `padding:2pt 0; font-size:${sizePt}pt;`;
+  const flexGap = `${preset.linePt}pt`;
+  const rows = [];
+  let idx = 0;
+  const total = (meta.cc ? 1 : 0) + (meta.printOrg || meta.printDate ? 1 : 0) + (meta.printCopies ? 1 : 0);
+  const topBorder = () => {
+    const b = idx === 0 ? "border-top:1.5pt solid #000;" : "border-top:0.75pt solid #000;";
+    const last = idx === total - 1 ? "border-bottom:1.5pt solid #000;" : "";
+    idx++;
+    return b + last;
+  };
+  if (meta.cc) {
+    const t = /[。！？]$/.test(meta.cc.trim()) ? meta.cc.trim() : `${meta.cc.trim()}\u3002`;
+    rows.push(`<div style="${topBorder()}${base} padding-left:${struct.colophonLeftChars}em;">\u6284\u9001\uFF1A${esc(t)}</div>`);
+  }
+  if (meta.printOrg || meta.printDate) {
+    const pd = /印发$/.test(meta.printDate?.trim() ?? "") ? meta.printDate.trim() : `${meta.printDate?.trim() ?? ""}\u5370\u53D1`;
+    rows.push(
+      `<div style="${topBorder()}${base} display:flex; justify-content:space-between;"><span style="margin-left:${struct.colophonLeftChars}em;">${esc(meta.printOrg ?? "")}</span><span style="margin-right:${struct.printRightChars}em;">${esc(pd)}</span></div>`
+    );
+  }
+  if (meta.printCopies) {
+    const c = meta.printCopies.trim();
+    const label = /印/.test(c) ? c : `\u5370${c}\u4EFD`;
+    rows.push(`<div style="${topBorder()}${base} text-align:right; padding-right:${struct.copiesRightChars}em;">${esc(label)}</div>`);
+  }
+  return [`<div class="rg-colophon" style="margin-top:${flexGap};">`, ...rows, "</div>"].join("\n");
+}
+function tableHtml(t, preset) {
+  const st = preset.roles.table;
+  const family = cssFont(st, "table").replace(/"/g, "&quot;");
+  const base = `font-family:${family}; font-size:${st.sizePt}pt; font-weight:${st.bold ? 700 : 400}; padding:3pt 4pt; border:0.5pt solid #000; word-break:break-all;`;
+  const al = (a) => a === "left" ? "left" : a === "right" ? "right" : "center";
+  const trs = [];
+  const ths = t.header.map((h, i) => `<th style="${base}font-weight:700; text-align:center;">${esc(h)}</th>`).join("");
+  trs.push(`<tr>${ths}</tr>`);
+  for (const r of t.rows)
+    trs.push(
+      `<tr>${r.map((c, i) => {
+        const txt = c.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/[*_`]/g, "");
+        return `<td style="${base} text-align:${al(t.align?.[i])};">${esc(txt)}</td>`;
+      }).join("")}</tr>`
+    );
+  return `<table class="rg-table" style="border-collapse:collapse; width:100%; table-layout:fixed; margin:${preset.linePt}pt 0;">${trs.join("")}</table>`;
+}
+function blockHtml(b, preset, boldFirst) {
+  switch (b.kind) {
+    case "docTitle":
+      return `<div class="rg-title">${b.text.split("\n").map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
+    case "h1":
+      return `<div class="rg-h1">${esc(b.text)}</div>`;
+    case "h2":
+      return `<div class="rg-h2">${esc(b.text)}</div>`;
+    case "h3":
+      return `<div class="rg-h3">${esc(b.text)}</div>`;
+    case "table":
+      return b.table && b.table.rows.length ? tableHtml(b.table, preset) : "";
+    default:
+      return `<div class="rg-para">${bodyHtml(b.text, boldFirst)}</div>`;
+  }
+}
+function renderAttach(attach, preset, boldFirst) {
+  const out = ['<div class="rg-attach-break">\u53E6\u9762 \xB7 \u9644\u4EF6</div>', '<div class="rg-attach-section">'];
+  let firstHeadingIdx = -1;
+  for (let i = 0; i < attach.length; i++) {
+    if (attach[i].kind === "docTitle" || attach[i].kind === "h1" || attach[i].kind === "h2") {
+      firstHeadingIdx = i;
+      break;
+    }
+  }
+  if (firstHeadingIdx >= 0) {
+    const { mark, title } = splitAttachTitle(attach[firstHeadingIdx].text);
+    out.push(`<div class="rg-attach-mark">${esc(mark)}</div>`);
+    if (title) out.push(`<div class="rg-title">${esc(title)}</div>`);
+  } else {
+    out.push('<div class="rg-attach-mark">\u9644\u4EF6</div>');
+  }
+  for (let i = 0; i < attach.length; i++) {
+    if (i === firstHeadingIdx) continue;
+    out.push(blockHtml(attach[i], preset, boldFirst));
+  }
+  out.push("</div>");
+  return out.join("\n");
+}
+function renderPreview(blocks, preset, opts) {
+  const boldFirst = !!opts?.firstSentenceBold;
+  const struct = { ...STRUCT_DEFAULTS, ...opts?.struct };
+  const meta = opts?.meta;
+  const body = [];
+  if (meta || opts?.logoUrl) body.push(redHeadHtml(meta ?? {}, opts?.logoUrl));
+  for (const b of blocks) {
+    body.push(blockHtml(b, preset, boldFirst));
+    if (b.kind === "docTitle" && meta?.recipients) body.push(recipientsHtml(meta.recipients));
+  }
+  if (meta) {
+    if (meta.attachments) body.push(attachmentsHtml(meta.attachments, struct.attachIndentChars));
+    const closing = closingHtml(meta, preset, struct, opts?.sealUrl);
+    if (closing) body.push(closing);
+  }
+  if (opts?.attach && opts.attach.length) body.push(renderAttach(opts.attach, preset, boldFirst));
+  if (meta) {
+    const colophon = colophonHtml(meta, preset, struct);
+    if (colophon) body.push(colophon);
+  }
+  const css = `
+.rg-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: ${preset.page.top}mm ${preset.page.right}mm ${preset.page.bottom}mm ${preset.page.left}mm;
+  background: #fff; color: #000; box-sizing: border-box;
+  font-family: ${cssFont(preset.roles.body, "body")};
+  font-size: ${preset.roles.body.sizePt}pt;
+  line-height: ${preset.linePt}pt;
+}
+${roleCss("rg-title", preset.roles.docTitle, "docTitle", preset.titleLinePt, " margin: 0 0 14pt;")}
+${roleCss("rg-h1", preset.roles.h1, "h1", preset.linePt)}
+${roleCss("rg-h2", preset.roles.h2, "h2", preset.linePt)}
+${roleCss("rg-h3", preset.roles.h3, "h3", preset.linePt)}
+.rg-para { text-align: justify;${preset.roles.body.indentChars ? ` text-indent: ${preset.roles.body.indentChars}em;` : ""} }
+.rg-recipients { margin-top: ${preset.linePt}pt; }
+.rg-attach { margin-top: ${preset.linePt}pt; }
+.rg-pagenum { margin-top: 12pt; }
+.rg-attach-mark { font-family: ${cssFont(preset.roles.h1, "h1").replace(/"/g, "&quot;")}; font-size: ${preset.roles.body.sizePt}pt; font-weight: 400; margin-top: ${preset.linePt}pt; }
+.rg-attach-break { margin-top: ${Math.round(preset.linePt * 3)}pt; padding: 3pt 0; border-top: 1px dashed #99a; text-align: center; color: #99a; font-size: 10.5pt; letter-spacing: 0.4em; }
+.rg-attach-section .rg-title { margin-top: ${preset.linePt}pt; }
+`;
+  return `<style>${css}</style><div class="rg-page">${body.join("\n")}${pageNumberHtml(preset.pageNumber)}</div>`;
+}
+
+// src/views/preview_view.ts
+var PreviewView = class extends import_obsidian.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    /** 当前预览的笔记（openPreview 在 leaf 激活前捕获后写入） */
+    this.file = null;
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return VIEW_TYPE_PREVIEW;
+  }
+  getDisplayText() {
+    return "\u6392\u7248\u9884\u89C8";
+  }
+  getIcon() {
+    return "file-text";
+  }
+  async onOpen() {
+    this.render();
+    this.registerEvent(
+      this.plugin.app.workspace.on("active-leaf-change", async () => {
+        const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+        if (mv?.file && mv.file !== this.file) {
+          this.file = mv.file;
+          await this.render();
+        }
+      })
+    );
+  }
+  async render() {
+    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    if (mv?.file) this.file = mv.file;
+    const content = this.contentEl;
+    content.empty();
+    const bar = content.createEl("div", { cls: "redquill-bar" });
+    const select = bar.createEl("select", { cls: "dropdown" });
+    for (const p of this.plugin.allPresets()) {
+      select.createEl("option", { value: p.id, text: p.name }).selected = p.id === this.plugin.settings.activePresetId;
+    }
+    select.addEventListener("change", async () => {
+      this.plugin.settings.activePresetId = select.value;
+      await this.plugin.saveSettings();
+      await this.render();
+    });
+    const boldLabel = bar.createEl("label", { cls: "redquill-toggle" });
+    const boldCheck = boldLabel.createEl("input", { type: "checkbox" });
+    boldCheck.checked = this.plugin.settings.firstSentenceBold;
+    boldLabel.createEl("span", { text: "\u9996\u53E5\u6807\u7C97" });
+    boldCheck.addEventListener("change", async () => {
+      this.plugin.settings.firstSentenceBold = boldCheck.checked;
+      await this.plugin.saveSettings();
+      await this.render();
+    });
+    const btn = bar.createEl("button", { text: "\u5BFC\u51FA docx", cls: "mod-cta" });
+    btn.addEventListener("click", () => this.exportDocx());
+    const checkBtn = bar.createEl("button", { text: "\u4F53\u68C0" });
+    checkBtn.addEventListener("click", () => {
+      if (this.file) void this.plugin.openCheck(this.file);
+    });
+    const pdfBtn = bar.createEl("button", { text: "\u6253\u5370 / \u5B58\u4E3A PDF" });
+    pdfBtn.addEventListener("click", () => this.printPdf());
+    const paper = content.createEl("div", { cls: "redquill-paper" });
+    if (!this.file) {
+      paper.createEl("p", { text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\u81EA\u52A8\u9884\u89C8\u3002" });
+      return;
+    }
+    const md = await this.plugin.app.vault.cachedRead(this.file);
+    const { meta, blocks, attach } = parseDocument(md);
+    const { logoUrl, sealUrl } = await this.plugin.resolveLogo(meta);
+    paper.innerHTML = renderPreview(blocks, this.plugin.activePreset(), {
+      firstSentenceBold: this.plugin.settings.firstSentenceBold,
+      meta,
+      logoUrl,
+      sealUrl,
+      attach,
+      struct: this.plugin.structLayout()
+    });
+  }
+  async exportDocx() {
+    if (!this.file) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\u3002");
+      return;
+    }
+    const md = await this.plugin.app.vault.cachedRead(this.file);
+    const { meta, blocks, attach } = parseDocument(md);
+    const warn = validateDocNumber(meta.docNumber);
+    if (warn) new import_obsidian.Notice(`RedQuill\uFF1A${warn}`, 8e3);
+    const { logo, seal } = await this.plugin.resolveLogo(meta);
+    const blob = await buildDocxBlob(blocks, this.plugin.activePreset(), {
+      firstSentenceBold: this.plugin.settings.firstSentenceBold,
+      meta,
+      logo,
+      seal,
+      attach,
+      colophonMode: this.plugin.settings.colophonMode,
+      struct: this.plugin.structLayout()
+    });
+    const path = this.file.path.replace(/\.md$/i, ".docx");
+    await this.plugin.app.vault.adapter.writeBinary(path, await blob.arrayBuffer());
+    new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${path}`);
+  }
+  /**
+   * M3 PDF：预览即真相源——把预览面板同一份 renderPreview HTML 注入隐藏 iframe，
+   * @page A4 零边距（.rg-page 自带页边距 padding），走 Electron 打印管线「另存为 PDF」。
+   */
+  async printPdf() {
+    if (!this.file) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\u3002");
+      return;
+    }
+    const md = await this.plugin.app.vault.cachedRead(this.file);
+    const { meta, blocks, attach } = parseDocument(md);
+    const { logoUrl, sealUrl } = await this.plugin.resolveLogo(meta);
+    const inner = renderPreview(blocks, this.plugin.activePreset(), {
+      firstSentenceBold: this.plugin.settings.firstSentenceBold,
+      meta,
+      logoUrl,
+      sealUrl,
+      attach,
+      struct: this.plugin.structLayout()
+    });
+    const safeName = this.file.basename.replace(/[<>&"]/g, "");
+    const html2 = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeName}</title><style>
+@page { size: A4; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+.rg-page { min-height: auto; }
+</style></head><body>${inner}</body></html>`;
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed; right:0; bottom:0; width:1px; height:1px; border:0; opacity:0;";
+    iframe.srcdoc = html2;
+    iframe.addEventListener("load", () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } finally {
+        window.setTimeout(() => iframe.remove(), 6e4);
+      }
+    });
+    document.body.appendChild(iframe);
+    new import_obsidian.Notice("RedQuill\uFF1A\u6253\u5370\u5BF9\u8BDD\u6846\u4E2D\u9009\u300C\u53E6\u5B58\u4E3A PDF\u300D\u5373\u53EF\uFF08PDF \u4E0E\u9884\u89C8\u96F6\u5DEE\u5F02\uFF09\u3002", 6e3);
+  }
+  async onClose() {
+  }
+};
+
+// src/views/write_assist_view.ts
+var import_obsidian3 = require("obsidian");
+
+// src/gongwen/writeassist.ts
+var CN = ["\u96F6", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"];
+function cnNum(n) {
+  if (n <= 0) return "";
+  if (n <= 10) return CN[n];
+  const tens = Math.floor(n / 10);
+  const ones = n % 10;
+  return (tens === 1 ? "\u5341" : CN[tens] + "\u5341") + (ones ? CN[ones] : "");
+}
+function lineRole(line) {
+  const raw = line ?? "";
+  const t = raw.trim();
+  if (!t) return { role: "empty", label: "\u7A7A\u884C\uFF08\u6BB5\u843D\u5206\u9694\uFF09" };
+  if (/^-{3,}\s*$/.test(t)) return { role: "fm", label: "frontmatter \u680F\u7EBF\uFF08---\uFF09", tip: "\u5F00\u680F\u540E\u5199 rh-* \u516C\u6587\u5C5E\u6027\uFF1B\u6B63\u6587\u4E2D\u5355\u72EC\u4E00\u884C --- \u4F1A\u5F00\u542F\u9644\u4EF6\u533A\uFF08\u53E6\u9762\u8D77\u6392\uFF09" };
+  if (/^rh-[A-Za-z][A-Za-z0-9]*\s*:/.test(t) || /^[A-Za-z_][A-Za-z0-9_]*\s*:/.test(t))
+    return { role: "fm", label: "frontmatter \u5C5E\u6027\u884C", tip: "rh- \u524D\u7F00\u4E3A\u516C\u6587\u5C5E\u6027\uFF1B\u666E\u901A yaml \u952E\u4E0D\u5F71\u54CD\u6392\u7248" };
+  if (/^#\s+\S/.test(t)) return { role: "docTitle", label: "\u6587\u4EF6\u6807\u9898\uFF08#\uFF09", tip: "\u5C0F\u6807\u5B8B\u4E8C\u53F7\u5C45\u4E2D\uFF1B\u6574\u7BC7\u53EA\u53D6\u7B2C\u4E00\u4E2A #\uFF0C\u6B63\u6587\u91CC\u7684\u7EA7\u6B21\u8BF7\u7528 ## \u8D77" };
+  if (/^##\s+\S/.test(t)) return { role: "h1", label: "\u4E00\u7EA7\u6807\u9898\uFF08## \u4E00\u3001\uFF09", tip: "\u9ED1\u4F53\u4E09\u53F7\u9876\u683C\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C\u4E00\u3001\u4E8C\u3001\u4E09\u2026\u300D" };
+  if (/^###\s+\S/.test(t)) return { role: "h2", label: "\u4E8C\u7EA7\u6807\u9898\uFF08### \uFF08\u4E00\uFF09\uFF09", tip: "\u6977\u4F53\u4E09\u53F7\u9876\u683C\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C\uFF08\u4E00\uFF09\uFF08\u4E8C\uFF09\u2026\u300D" };
+  if (/^####\s+\S/.test(t)) return { role: "h3", label: "\u4E09\u7EA7\u6807\u9898\uFF08#### 1.\uFF09", tip: "\u4EFF\u5B8B\u4E09\u53F7\u52A0\u7C97\u3001\u9996\u884C\u7F29\u8FDB 2 \u5B57\uFF1B\u5EFA\u8BAE\u5E8F\u53F7\u300C1. 2. \u2026\u300D" };
+  if (/^#{5,}\s+\S/.test(t))
+    return { role: "plain", label: "\u8FC7\u6DF1\u6807\u9898\uFF08#####+\uFF09", tip: "\u516C\u6587\u7EA7\u6B21\u53EA\u5230\u4E09\u7EA7\uFF08# \u6807\u9898 / ## \u4E00\u3001/ ### \uFF08\u4E00\uFF09/ #### 1.\uFF09\uFF0C\u66F4\u6DF1\u7684\u884C\u6309\u6B63\u6587\u5904\u7406" };
+  const out = detectOutlineHeading(t);
+  if (out === "h1") return { role: "bare-h1", label: "\u4E00\u7EA7\u6807\u9898\uFF08\u88F8\u5199\u300C\u4E00\u3001\u300D\u8BC6\u522B\uFF09", tip: "\u5DF2\u81EA\u52A8\u6309\u9ED1\u4F53\u4E09\u53F7\u4E00\u7EA7\u6807\u9898\u6392\u7248\uFF1B\u4E5F\u53EF\u5199\u6210 ## \u524D\u7F00\u66F4\u663E\u5F0F" };
+  if (/^[一二三四五六七八九十]{1,3}、/.test(t))
+    return { role: "bare-h1-body", label: "\u6B63\u6587\u6BB5\uFF08\u6BB5\u9996\u5E8F\u6570\u300C\u4E00\u3001\u2026\u300D\uFF09", tip: "\u884C\u5185\u542B\u53E5\u53F7 \u2192 \u6309\u6B63\u6587\u6E32\u67D3\uFF08\u9996\u884C\u7F29\u8FDB 2 \u5B57\uFF09\u3002\u6807\u9898\u884C\u5EFA\u8BAE\u4E0D\u5199\u53E5\u53F7" };
+  if (/^（[一二三四五六七八九十]{1,3}）/.test(t) && !t.includes("\u3002"))
+    return { role: "suggest-h2", label: "\u7591\u4F3C\u4E8C\u7EA7\u6807\u9898\uFF08\uFF08\u4E00\uFF09\u2026\uFF09", tip: "\u88F8\u5199\uFF08\u4E00\uFF09\u4E0D\u8BC6\u522B\u5C42\u7EA7\uFF0C\u8BF7\u52A0 ### \u524D\u7F00\uFF08\u6977\u4F53\u4E09\u53F7\uFF09\u6216\u76F4\u63A5\u63A5\u6B63\u6587" };
+  if (/^\d{1,2}[.、]/.test(t) && !t.includes("\u3002"))
+    return { role: "suggest-h3", label: "\u7591\u4F3C\u4E09\u7EA7\u6807\u9898\uFF081. \u2026\uFF09", tip: "\u88F8\u5199 1. \u4E0D\u8BC6\u522B\u5C42\u7EA7\uFF0C\u8BF7\u52A0 #### \u524D\u7F00\uFF08\u4EFF\u5B8B\u52A0\u7C97\u3001\u7F29\u8FDB 2 \u5B57\uFF09\u6216\u76F4\u63A5\u63A5\u6B63\u6587" };
+  if (/^\s*\|/.test(t)) return { role: "table", label: "md \u8868\u683C", tip: "\u8868\u5934\u9996\u884C\u52A0\u7C97\u5C45\u4E2D\uFF0C\u5217\u5BF9\u9F50\u8BA4 :-- \u5DE6 / :--: \u4E2D / --: \u53F3" };
+  if (/^>\s?/.test(t)) return { role: "quote", label: "\u5F15\u7528\u884C\uFF08> \u5143\u4FE1\u606F\uFF09", tip: "\u5F15\u7528\u5757\u4E0D\u8FDB\u6B63\u6587\uFF08\u4F5C\u5143\u4FE1\u606F/\u5907\u6CE8\u7528\uFF09" };
+  if (/^[-*+]\s/.test(t)) return { role: "list", label: "\u5217\u8868\u9879", tip: "\u6E32\u67D3\u65F6\u6761\u76EE\u62CD\u5E73\u6210\u6B63\u6587\u6BB5\u843D\uFF1B\u516C\u6587\u5E8F\u53F7\u8BF7\u76F4\u63A5\u5199\u5728\u539F\u6587\uFF08\u4E00\u3001/\uFF08\u4E00\uFF09/1.\uFF09" };
+  if (/^```/.test(t)) return { role: "code", label: "\u4EE3\u7801\u5757", tip: "\u4EE3\u7801\u5757\u4E0D\u8FDB\u6B63\u6587" };
+  if (/^[\s\u3000\u00A0]/.test(raw) && !/^\s*\|/.test(raw))
+    return { role: "body-indent", label: "\u6B63\u6587\u6BB5\uFF08\u884C\u9996\u6709\u624B\u6572\u7A7A\u683C\uFF09", tip: "\u9996\u884C\u7F29\u8FDB\u7531\u6392\u7248\u81EA\u52A8\u751F\u6210\uFF082 \u5B57\uFF09\uFF0C\u884C\u9996\u7A7A\u683C\u8BF7\u5220\u9664\uFF0C\u907F\u514D\u5BFC\u51FA docx \u51FA\u73B0\u591A\u4F59\u7A7A\u767D" };
+  return { role: "body", label: "\u6B63\u6587\u6BB5", tip: "\u9996\u884C\u81EA\u52A8\u7F29\u8FDB 2 \u5B57\u3001\u4E24\u7AEF\u5BF9\u9F50\uFF1B\u6BB5\u4E0E\u6BB5\u4E4B\u95F4\u7559\u4E00\u4E2A\u7A7A\u884C" };
+}
+function isH1Line(line) {
+  const t = line.trim();
+  return /^##\s+\S/.test(t) || detectOutlineHeading(t) === "h1";
+}
+function isH2Line(line) {
+  return /^###\s+\S/.test(line.trim());
+}
+function nextH1(lines) {
+  let n = 0;
+  let inFm = false;
+  for (const ln of lines) {
+    const t = ln.trim();
+    if (/^-{3,}\s*$/.test(t)) {
+      inFm = !inFm;
+      continue;
+    }
+    if (!inFm && isH1Line(ln)) n += 1;
+  }
+  return cnNum(n + 1) + "\u3001";
+}
+function nextH2(lines) {
+  let n = 0;
+  let inFm = false;
+  for (const ln of lines) {
+    const t = ln.trim();
+    if (/^-{3,}\s*$/.test(t)) {
+      inFm = !inFm;
+      continue;
+    }
+    if (!inFm && isH2Line(ln)) n += 1;
+  }
+  return `\uFF08${CN[n + 1]}\uFF09`;
+}
+
+// src/modals.ts
+var import_obsidian2 = require("obsidian");
+
+// src/frontmatter.ts
+var FM_FORM_FIELDS = [
+  { label: "\u673A\u5173\u6807\u5FD7\u6587\u5B57\uFF08\u7EA2\u5934\u5927\u5B57\uFF09", key: "rh-agency", group: "\u7248\u5934", placeholder: "XX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\uFF1B\u8054\u5408\u884C\u6587\u7528 / \u5206\u9694\u591A\u673A\u5173" },
+  { label: "\u673A\u5173\u6807\u5FD7\u56FE\u7247\uFF08vault \u8DEF\u5F84\uFF0Cpng/jpg\uFF09", key: "rh-logo", group: "\u7248\u5934", placeholder: "_assets/logo.png" },
+  { label: "\u53D1\u6587\u5B57\u53F7", key: "rh-docNumber", group: "\u7248\u5934", placeholder: "X\u653F\u53D1\u30142026\u301512\u53F7" },
+  { label: "\u7B7E\u53D1\u4EBA\uFF08\u4E0A\u884C\u6587\u624D\u586B\uFF09", key: "rh-signer", group: "\u7248\u5934", placeholder: "\u5F20\u4E09" },
+  { label: "\u4EFD\u53F7\uFF086 \u4F4D\u6570\u5B57\uFF09", key: "rh-copyNumber", group: "\u7248\u5934", placeholder: "000001" },
+  { label: "\u5BC6\u7EA7\u548C\u4FDD\u5BC6\u671F\u9650", key: "rh-secretLevel", group: "\u7248\u5934", placeholder: "\u673A\u5BC6\u26051\u5E74" },
+  { label: "\u7D27\u6025\u7A0B\u5EA6", key: "rh-urgency", group: "\u7248\u5934", placeholder: "\u7279\u6025" },
+  { label: "\u4E3B\u9001\u673A\u5173\uFF08\u591A\u4E2A\u7528\u987F\u53F7\u5206\u9694\uFF09", key: "rh-recipients", group: "\u4E3B\u4F53", placeholder: "\u5404\u90E8\u95E8\u3001\u5404\u79D1\u5BA4", wide: true },
+  { label: "\u7F72\u540D\uFF08\u53D1\u6587\u673A\u5173\u540D\uFF09", key: "rh-signature", group: "\u4E3B\u4F53", placeholder: "XX\u9547\u4EBA\u6C11\u653F\u5E9C" },
+  { label: "\u6210\u6587\u65E5\u671F", key: "rh-date", group: "\u4E3B\u4F53", placeholder: "2026\u5E749\u67082\u65E5" },
+  { label: "\u5370\u7AE0\u56FE\uFF08vault \u8DEF\u5F84\uFF0C\u6D6E\u76D6\u5728\u6210\u6587\u65E5\u671F\u4E0A\uFF09", key: "rh-seal", group: "\u4E3B\u4F53", placeholder: "_assets/seal.png" },
+  { label: "\u9644\u4EF6\u8BF4\u660E\uFF08\u591A\u4E2A\u7528 / \u5206\u9694\uFF09", key: "rh-attachments", group: "\u4E3B\u4F53", placeholder: "\u4F1A\u8BAE\u8BAE\u7A0B/\u53C2\u4F1A\u540D\u5355", wide: true },
+  { label: "\u9644\u6CE8\uFF08\u8054\u7CFB\u4EBA\u7B49\uFF0C\u81EA\u52A8\u52A0\u5706\u62EC\u53F7\uFF09", key: "rh-notes", group: "\u4E3B\u4F53", placeholder: "\u8054\u7CFB\u4EBA\uFF1A\u5F20\u4E09", wide: true },
+  { label: "\u6284\u9001\u673A\u5173", key: "rh-cc", group: "\u7248\u8BB0", placeholder: "\u53BF\u519C\u4E1A\u519C\u6751\u5C40\u3001\u53BF\u8D22\u653F\u5C40" },
+  { label: "\u5370\u53D1\u673A\u5173", key: "rh-printOrg", group: "\u7248\u8BB0", placeholder: "XX\u9547\u515A\u653F\u529E\u516C\u5BA4" },
+  { label: "\u5370\u53D1\u65F6\u95F4", key: "rh-printDate", group: "\u7248\u8BB0", placeholder: "2026\u5E749\u67082\u65E5" },
+  { label: "\u5370\u53D1\u4EFD\u6570", key: "rh-printCopies", group: "\u7248\u8BB0", placeholder: "20" }
+];
+function fmQuote(v) {
+  return /[:#[\]{}&*!|>'"%@`]/.test(v) || /^\s|\s$/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
+}
+function applyFrontmatter(src, entries) {
+  const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) {
+    const fm = ["---", ...entries.map(([k, v]) => `${k}: ${fmQuote(v)}`), "---", ""].join("\n");
+    return fm + src;
+  }
+  let fmText = m[1];
+  for (const [k, v] of entries) {
+    const re = new RegExp(`^(${k}\\s*:\\s*)(.*)$`, "m");
+    if (re.test(fmText)) fmText = fmText.replace(re, (_s, pre) => `${pre}${fmQuote(v)}`);
+    else fmText += `
+${k}: ${fmQuote(v)}`;
+  }
+  const rest = src.slice(m[0].length);
+  return `---
+${fmText}
+---
+${rest.startsWith("\n") || rest === "" ? rest : "\n" + rest}`;
+}
+
+// src/modals.ts
+var NewGongwenWizard = class extends import_obsidian2.FuzzySuggestModal {
+  constructor(plugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.setPlaceholder("\u8F93\u5165\u6587\u79CD\u540D\u7B5B\u9009\uFF1A\u901A\u77E5 / \u8BF7\u793A / \u62A5\u544A / \u7EAA\u8981 \u2026");
+  }
+  getItems() {
+    return NEW_DOC_ITEMS;
+  }
+  getItemText(it) {
+    return `${it.label}\uFF08${it.group}\uFF09\u2014 ${it.desc}`;
+  }
+  onChooseItem(it) {
+    new NewGongwenDraftModal(this.plugin, it).open();
+  }
+};
+var NewGongwenDraftModal = class extends import_obsidian2.Modal {
+  constructor(plugin, item) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.item = item;
+    this.titleEl.setText(`\u65B0\u5EFA\u516C\u6587 \xB7 ${item.label}`);
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: `\u65B0\u5EFA\u516C\u6587\uFF1A${this.item.label}` });
+    const agency = this.plugin.settings.defaultAgency;
+    contentEl.createEl("p", {
+      text: `${this.item.desc}\u3002\u53D1\u6587\u673A\u5173\uFF1A${agency ? `\u300C${agency}\u300D` : "\u6A21\u677F\u5360\u4F4D\u300CXX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\u300D"}\uFF1B\u6A21\u677F\u4E2D\u5199\u6B7B\u7684\u5E74\u4EFD\u81EA\u52A8\u66FF\u6362\u4E3A\u4ECA\u5E74\u3002\u6587\u4EF6\u5EFA\u5728\u5F53\u524D\u7B14\u8BB0\u6240\u5728\u6587\u4EF6\u5939\u3002`,
+      cls: "setting-item-description"
+    });
+    const input = contentEl.createEl("input", {
+      type: "text",
+      cls: "redquill-wizard-input",
+      placeholder: "\u516C\u6587\u6807\u9898\uFF08\u53EF\u7559\u7A7A\u7528\u6A21\u677F\u5360\u4F4D\uFF0C\u5982\uFF1A\u5173\u4E8E\u5F00\u5C55\u79CB\u5B63\u4EBA\u5C45\u73AF\u5883\u6574\u6CBB\u7684\u901A\u77E5\uFF09"
+    });
+    input.style.width = "100%";
+    input.focus();
+    new import_obsidian2.Setting(contentEl).addButton(
+      (b) => b.setButtonText("\u521B\u5EFA\u5E76\u6253\u5F00").setCta().onClick(async () => {
+        const title = input.value.trim();
+        try {
+          await this.plugin.createGongwenDoc(this.item, title);
+        } catch (e) {
+          new import_obsidian2.Notice(`RedQuill\uFF1A\u521B\u5EFA\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
+          return;
+        }
+        new import_obsidian2.Notice("RedQuill\uFF1A\u516C\u6587\u5DF2\u521B\u5EFA\uFF0C\u5F00\u59CB\u5199\u4F5C\uFF08\u5199\u8F85\u52A9\u53EF\u63D0\u793A\u6807\u9898\u5C42\u7EA7\uFF09\u3002");
+        this.close();
+      })
+    );
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        contentEl.querySelector("button.mod-cta")?.click();
+      }
+    });
+  }
+};
+var GongwenFormModal = class extends import_obsidian2.Modal {
+  constructor(plugin, initial) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.initial = initial;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: "\u586B\u5199\u516C\u6587\u5C5E\u6027" });
+    contentEl.createEl("p", {
+      text: "\u4E2D\u6587\u586B\u5199\uFF0C\u4FDD\u5B58\u540E\u4EE5 rh-* \u82F1\u6587\u5C5E\u6027\u5199\u5165\u7B14\u8BB0 frontmatter\u3002\u7559\u7A7A = \u4E0D\u6E32\u67D3\u8BE5\u8981\u7D20\u3002",
+      cls: "setting-item-description"
+    });
+    const values = {};
+    const inputs = {};
+    let lastGroup = "";
+    for (const f of FM_FORM_FIELDS) {
+      if (f.group !== lastGroup) {
+        lastGroup = f.group;
+        contentEl.createEl("h4", { text: f.group });
+      }
+      const metaKey = f.key.slice(3);
+      new import_obsidian2.Setting(contentEl).setName(f.label).setClass(f.wide ? "redquill-form-wide" : "redquill-form").addText((t) => {
+        t.setPlaceholder(f.placeholder ?? "").setValue(this.initial[metaKey] ?? "");
+        inputs[f.key] = t.inputEl;
+        t.inputEl.style.width = "100%";
+      });
+      values[f.key] = "";
+      inputs[f.key].addEventListener("input", () => values[f.key] = inputs[f.key].value);
+    }
+    new import_obsidian2.Setting(contentEl).addButton(
+      (b) => b.setButtonText("\u5199\u5165 frontmatter").setCta().onClick(() => {
+        const entries = FM_FORM_FIELDS.map(({ key }) => [key, values[key].trim()]).filter(
+          ([, v]) => v !== ""
+        );
+        const warn = validateDocNumber(values["rh-docNumber"]);
+        if (warn) new import_obsidian2.Notice(`RedQuill\uFF1A${warn}`, 8e3);
+        const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
+        if (!mv?.file) {
+          new import_obsidian2.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
+          return;
+        }
+        mv.editor.setValue(applyFrontmatter(mv.editor.getValue(), entries));
+        new import_obsidian2.Notice("RedQuill\uFF1A\u516C\u6587\u5C5E\u6027\u5DF2\u5199\u5165 frontmatter\u3002");
+        this.close();
+      })
+    ).addButton((b) => b.setButtonText("\u53D6\u6D88").onClick(() => this.close()));
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var CheckReportModal = class extends import_obsidian2.Modal {
+  constructor(plugin, file, issues) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.file = file;
+    this.issues = issues;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const errs = this.issues.filter((i) => i.level === "error").length;
+    const warns = this.issues.length - errs;
+    contentEl.createEl("h3", {
+      text: this.issues.length ? `\u6392\u7248\u4F53\u68C0\uFF1A${errs} \u5904\u9700\u5904\u7406\uFF0C${warns} \u5904\u5EFA\u8BAE` : "\u6392\u7248\u4F53\u68C0\uFF1A\u901A\u8FC7"
+    });
+    contentEl.createEl("p", {
+      text: "\u673A\u5668\u81EA\u67E5\u4EC5\u63D0\u793A\u3001\u4E0D\u4FEE\u6539\u3001\u4E0D\u963B\u585E\u5BFC\u51FA\u3002\u70B9\u51FB\u300C\u7B2C N \u884C\u300D\u8DF3\u5230\u5BF9\u5E94\u4F4D\u7F6E\uFF08\u4F1A\u81EA\u52A8\u5207\u5230\u6E90\u7801\u6A21\u5F0F\uFF09\u3002",
+      cls: "setting-item-description"
+    });
+    if (!this.issues.length) {
+      contentEl.createEl("p", { text: "\u672A\u53D1\u73B0\u95EE\u9898\uFF0C\u53EF\u76F4\u63A5\u5BFC\u51FA\u3002", cls: "setting-item-description" });
+      return;
+    }
+    const list2 = contentEl.createEl("div", { cls: "redquill-check-list" });
+    for (const it of this.issues) {
+      const row = list2.createEl("div", { cls: `redquill-check-item ${it.level}` });
+      row.createEl("span", { cls: "redquill-check-badge", text: it.level === "error" ? "\u9700\u5904\u7406" : "\u5EFA\u8BAE" });
+      row.createEl("span", { cls: "redquill-check-msg", text: it.message });
+      if (it.line !== void 0) {
+        const ln = row.createEl("span", { cls: "redquill-check-line", text: `\u7B2C ${it.line} \u884C \u2197` });
+        ln.addEventListener("click", () => void this.jumpTo(it.line));
+      }
+    }
+  }
+  /** 跳到该文件源码模式第 line 行（1-based），并高亮当前行 */
+  async jumpTo(line) {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType("markdown").find((l) => l.view?.file === this.file);
+    if (!leaf) leaf = workspace.getLeaf(false);
+    await leaf.openFile(this.file, { active: true, state: { mode: "source" } });
+    const ed = leaf.view.editor;
+    if (ed) {
+      const l = Math.max(0, line - 1);
+      ed.setCursor({ line: l, ch: 0 });
+      ed.scrollIntoView({ from: { line: l, ch: 0 }, to: { line: l, ch: 0 } }, true);
+    }
+    this.close();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var SettingsBackupModal = class extends import_obsidian2.Modal {
+  constructor(plugin) {
+    super(plugin.app);
+    this.pasted = "";
+    this.plugin = plugin;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: "\u5BFC\u5165 RedQuill \u8BBE\u7F6E" });
+    contentEl.createEl("p", {
+      text: "\u4ECE\u672C vault \u7684 redquill-settings-*.json \u5907\u4EFD\u6062\u590D\uFF0C\u6216\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 JSON\u3002\u5BFC\u5165\u524D\u4F1A\u505A\u7ED3\u6784\u4E0E\u53D6\u503C\u6821\u9A8C\uFF0C\u975E\u6CD5\u9879\u81EA\u52A8\u56DE\u9ED8\u8BA4\u3002",
+      cls: "setting-item-description"
+    });
+    const files = this.plugin.backupFiles();
+    if (files.length) {
+      contentEl.createEl("h4", { text: `\u672C\u5E93\u5907\u4EFD\uFF08${files.length}\uFF09` });
+      for (const f of files.slice(0, 8)) {
+        const when = new Date(f.stat.mtime).toLocaleString();
+        new import_obsidian2.Setting(contentEl).setName(f.name).setDesc(`${when}\u3000\u81EA\u5B9A\u4E49\u9884\u8BBE ${(f.stat.size / 1024).toFixed(1)} KB`).addButton(
+          (b) => b.setButtonText("\u5BFC\u5165").onClick(async () => {
+            try {
+              const txt = await this.plugin.app.vault.read(f);
+              await this.plugin.importSettingsText(txt, f.name);
+              this.close();
+            } catch (e) {
+              new import_obsidian2.Notice(`RedQuill\uFF1A\u5BFC\u5165\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
+            }
+          })
+        );
+      }
+    } else {
+      contentEl.createEl("p", { text: "\u672C\u5E93\u6682\u65E0 redquill-settings-*.json \u5907\u4EFD\u3002", cls: "setting-item-description" });
+    }
+    contentEl.createEl("h4", { text: "\u7C98\u8D34 JSON" });
+    const ta = contentEl.createEl("textarea", { cls: "redquill-import-json" });
+    ta.placeholder = "\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 redquill-settings JSON \u5168\u6587\u2026";
+    ta.addEventListener("input", () => this.pasted = ta.value);
+    new import_obsidian2.Setting(contentEl).addButton(
+      (b) => b.setButtonText("\u4ECE\u7C98\u8D34\u5185\u5BB9\u5BFC\u5165").setCta().onClick(async () => {
+        if (!this.pasted.trim()) {
+          new import_obsidian2.Notice("RedQuill\uFF1A\u8BF7\u5148\u7C98\u8D34 JSON \u5185\u5BB9\u3002");
+          return;
+        }
+        try {
+          await this.plugin.importSettingsText(this.pasted.trim(), "\u7C98\u8D34\u5185\u5BB9");
+          this.close();
+        } catch (e) {
+          new import_obsidian2.Notice(`RedQuill\uFF1A\u5BFC\u5165\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
+        }
+      })
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
+// src/views/write_assist_view.ts
+var ROLE_LABELS = {
+  docTitle: "\u5927\u6807\u9898",
+  h1: "\u4E00\u7EA7\u6807\u9898",
+  h2: "\u4E8C\u7EA7\u6807\u9898",
+  h3: "\u4E09\u7EA7\u6807\u9898",
+  body: "\u6B63\u6587",
+  table: "\u8868\u683C\uFF08\u8868\u5185\u6587\u5B57\uFF09"
+};
+function installResultText(r) {
+  const base = `RedQuill\uFF1A\u65B0\u5EFA ${r.created} \u4E2A${r.skipped ? `\u3001\u8DF3\u8FC7\u5DF2\u5B58\u5728 ${r.skipped} \u4E2A` : ""}`;
+  const tp = r.tpCreated || r.tpSkipped ? `\uFF1B\u5F39\u7A97\u7248 ${r.tpCreated} \u4E2A${r.tpSkipped ? `\u3001\u8DF3\u8FC7 ${r.tpSkipped} \u4E2A` : ""}` : "";
+  return `${base}${tp}\uFF08${r.folder}\uFF09\u3002`;
+}
+var WriteAssistView = class extends import_obsidian3.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    /** 防抖句柄：editor-change / 切文件都触发重渲，200ms 合并 */
+    this.pending = null;
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return VIEW_TYPE_WRITEASSIST;
+  }
+  getDisplayText() {
+    return "\u5199\u4F5C\u8F85\u52A9";
+  }
+  getIcon() {
+    return "pen-tool";
+  }
+  async onOpen() {
+    this.registerEvent(this.plugin.app.workspace.on("active-leaf-change", () => this.schedule()));
+    this.registerEvent(this.plugin.app.workspace.on("editor-change", () => this.schedule()));
+    this.renderPanel();
+  }
+  /** 合并触发：200ms 内多次事件只渲一次 */
+  schedule() {
+    if (this.pending !== null) window.clearTimeout(this.pending);
+    this.pending = window.setTimeout(() => {
+      this.pending = null;
+      this.renderPanel();
+    }, 200);
+  }
+  renderPanel() {
+    const el = this.contentEl;
+    el.empty();
+    el.createEl("h4", { text: "\u5199\u4F5C\u8F85\u52A9" });
+    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
+    if (!mv?.file) {
+      el.createEl("p", {
+        text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\uFF0C\u8FD9\u91CC\u8DDF\u968F\u5149\u6807\u8BCA\u65AD\u6BCF\u4E00\u884C\u7684\u516C\u6587\u89D2\u8272\uFF0C\u5E76\u7ED9\u51FA\u6807\u9898\u5E8F\u53F7\u5EFA\u8BAE\u3002",
+        cls: "setting-item-description"
+      });
+      return;
+    }
+    const editor = mv.editor;
+    const cursor = editor.getCursor();
+    const lineText = editor.getLine(cursor.line);
+    const info = lineRole(lineText);
+    const card = el.createEl("div", { cls: "redquill-write-card" });
+    card.createEl("div", { cls: "redquill-write-role", text: `\u7B2C ${cursor.line + 1} \u884C \xB7 ${info.label}` });
+    if (info.tip) card.createEl("div", { cls: "setting-item-description", text: info.tip });
+    const all = editor.getValue().split("\n");
+    const n1 = nextH1(all);
+    const n2 = nextH2(all);
+    const hint = el.createEl("p", { cls: "redquill-write-hint" });
+    hint.createSpan({ text: `\u4E0B\u4E00\u4E2A\u5E8F\u53F7\u5EFA\u8BAE\uFF1A\u4E00\u7EA7 ${n1}\u3000\u4E8C\u7EA7 ${n2}` });
+    el.createEl("h5", { text: "\u63D2\u5165\uFF08\u5149\u6807\u5904\uFF09" });
+    const grid = el.createEl("div", { cls: "redquill-write-btns" });
+    const mk = (label, snippet, tip = "") => {
+      const b = grid.createEl("button", { text: label, cls: "redquill-write-btn" });
+      b.title = tip || snippet;
+      b.addEventListener("click", () => {
+        editor.replaceSelection(snippet);
+        editor.focus();
+        this.schedule();
+      });
+    };
+    mk(`\u4E00\u7EA7 ${n1}`, `## ${n1}`);
+    mk(`\u4E8C\u7EA7 ${n2}`, `### ${n2}`);
+    mk("\u4E09\u7EA7 1.", "#### 1.");
+    mk("\u6587\u4EF6\u6807\u9898", "# ");
+    mk("\u8868\u683C", "| \u9879\u76EE | \u8BF4\u660E |\n| :--- | :--- |\n|  |  |\n|  |  |");
+    mk("\u9644\u4EF6\u53E6\u9762", "\n---\n", "\u6B63\u6587\u540E\u5355\u72EC\u4E00\u884C ---\uFF1A\u4E4B\u540E\u7684\u5185\u5BB9\u53E6\u9762\u8D77\u6392\u4E3A\u9644\u4EF6\u533A\uFF08\u6807\u9898\u5199 # \u9644\u4EF6N\uFF1A\u6807\u9898\uFF09");
+    el.createEl("h5", { text: "\u5E38\u7528" });
+    const ops = el.createEl("div", { cls: "redquill-write-btns" });
+    const op = (label, fn) => {
+      const b = ops.createEl("button", { text: label, cls: "redquill-write-btn" });
+      b.addEventListener("click", fn);
+    };
+    op("\u516C\u6587\u5C5E\u6027\u8868\u5355", () => {
+      const meta = parseDocument(editor.getValue()).meta;
+      new GongwenFormModal(this.plugin, meta).open();
+    });
+    op("\u6392\u7248\u4F53\u68C0", () => {
+      if (mv.file) void this.plugin.openCheck(mv.file);
+    });
+    op("\u5BFC\u51FA docx", () => {
+      void this.plugin.exportActiveDocx();
+    });
+  }
+};
+
+// src/views/panel_view.ts
+var import_obsidian4 = require("obsidian");
+
 // src/mdast.ts
 function fenceState2(line, inCode) {
   const t = line.trim();
@@ -23394,46 +23964,519 @@ function charStats(text) {
   return { chinese, nonspace, total };
 }
 
-// src/context.ts
-var FLAT_RE = /^rh-([A-Za-z]+)\s*:\s*(.*)$/;
-var NEST_HEAD_RE = /^redhead\s*:/;
-var NEST_KEY_RE = /^\s+([A-Za-z_]+)\s*:\s*(.*)$/;
-var unquote = (s) => s.trim().replace(/^["']|["']$/g, "");
-var isRedKey = (k) => RED_HEAD_KEYS.includes(k);
-function frontmatterIsGongwen(fmText) {
-  let inNested = false;
-  for (const raw of fmText.split(/\r?\n/)) {
-    const line = raw.trimEnd();
-    if (!line.trim()) continue;
-    if (!/^\s/.test(line)) {
-      inNested = NEST_HEAD_RE.test(line);
-      const flat = line.match(FLAT_RE);
-      if (flat && isRedKey(flat[1]) && unquote(flat[2])) return true;
-      continue;
+// src/views/panel_view.ts
+var RedQuillPanelView = class extends import_obsidian4.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.pending = null;
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return VIEW_TYPE_PANEL;
+  }
+  getDisplayText() {
+    return "\u5199\u4F5C\u9762\u677F";
+  }
+  getIcon() {
+    return "gauge";
+  }
+  async onOpen() {
+    this.registerEvent(this.plugin.app.workspace.on("active-leaf-change", () => this.schedule()));
+    this.registerEvent(this.plugin.app.workspace.on("editor-change", () => this.schedule()));
+    this.renderPanel();
+  }
+  /** 合并触发：200ms 内多次事件只渲一次 */
+  schedule() {
+    if (this.pending !== null) window.clearTimeout(this.pending);
+    this.pending = window.setTimeout(() => {
+      this.pending = null;
+      this.renderPanel();
+    }, 200);
+  }
+  renderPanel() {
+    const el = this.contentEl;
+    el.empty();
+    el.createEl("h4", { text: "RedQuill \u5199\u4F5C\u9762\u677F" });
+    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+    if (!mv?.file) {
+      el.createEl("p", {
+        text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\uFF0C\u8FD9\u91CC\u663E\u793A\u5B57\u6570\u3001\u6392\u7248\u4F53\u68C0\u901F\u89C8\u4E0E\u6807\u9898\u6811\u3002",
+        cls: "setting-item-description"
+      });
+      return;
     }
-    if (!inNested) continue;
-    const kv = line.match(NEST_KEY_RE);
-    if (kv && isRedKey(kv[1]) && unquote(kv[2])) return true;
+    const editor = mv.editor;
+    const text = editor.getValue();
+    const cursor = editor.getCursor();
+    const st = charStats(text);
+    const card1 = el.createEl("div", { cls: "mdquill-card" });
+    card1.createEl("div", { cls: "mdquill-card-title", text: "\u5B57\u6570" });
+    const stat = card1.createEl("div", { cls: "mdquill-stats" });
+    stat.createSpan({ text: `\u4E2D\u6587 ${st.chinese}` });
+    stat.createSpan({ text: `\u975E\u7A7A\u767D ${st.nonspace}` });
+    stat.createSpan({ text: `\u603B\u5B57\u7B26 ${st.total}` });
+    const paragraphs = text.split("\n").filter((l) => l.trim().length > 0).length;
+    stat.createSpan({ text: `\u6BB5 ${paragraphs}` });
+    stat.createSpan({ text: `\u5149\u6807\u7B2C ${cursor.line + 1} \u884C` });
+    const issues = checkDocument2(text);
+    const errs = issues.filter((i) => i.level === "error").length;
+    const warns = issues.length - errs;
+    const card2 = el.createEl("div", { cls: "mdquill-card" });
+    const head2 = card2.createEl("div", { cls: "mdquill-card-head" });
+    head2.createEl("div", {
+      cls: "mdquill-card-title",
+      text: `\u516B\u6761\u4F53\u68C0${issues.length ? `\uFF1A${errs} \u5904\u9700\u5904\u7406 / ${warns} \u5904\u5EFA\u8BAE` : "\uFF1A\u901A\u8FC7"}`
+    });
+    const btn2 = head2.createEl("button", { text: issues.length ? "\u770B\u62A5\u544A" : "\u518D\u4F53\u68C0", cls: "mdquill-btn" });
+    btn2.addEventListener("click", () => {
+      if (mv.file) new CheckReportModal(this.plugin, mv.file, issues).open();
+    });
+    const items = outlineOf(text);
+    const card3 = el.createEl("div", { cls: "mdquill-card" });
+    card3.createEl("div", { cls: "mdquill-card-title", text: `\u6807\u9898\u6811${items.length ? `\uFF08${items.length}\uFF09` : ""}` });
+    if (!items.length) {
+      card3.createEl("div", { cls: "setting-item-description", text: "\u8FD8\u6CA1\u6709 # \u4E00\u7EA7\u6807\u9898\u3002\u70B9\u4E0B\u65B9\u300C\u63D2\u5165\u300D\u91CC\u7684 # \u5F00\u59CB\u3002" });
+    } else {
+      const tree = card3.createEl("div", { cls: "mdquill-tree" });
+      let activeIdx = -1;
+      for (let i = 0; i < items.length; i++) if (items[i].line <= cursor.line + 1) activeIdx = i;
+      items.forEach((it, i) => {
+        const row = tree.createEl("div", {
+          cls: `mdquill-tree-item mdquill-h${it.level}${i === activeIdx ? " active" : ""}`,
+          text: it.text
+        });
+        row.title = `\u7B2C ${it.line} \u884C \xB7 \u70B9\u51FB\u8DF3\u8F6C`;
+        row.addEventListener("click", () => {
+          editor.setCursor({ line: it.line - 1, ch: 0 });
+          editor.scrollIntoView({ from: { line: it.line - 1, ch: 0 }, to: { line: it.line - 1, ch: 0 } }, true);
+          editor.focus();
+        });
+      });
+    }
+    const card4 = el.createEl("div", { cls: "mdquill-card" });
+    card4.createEl("div", { cls: "mdquill-card-title", text: "\u63D2\u5165\uFF08\u5149\u6807\u5904\uFF09" });
+    const grid = card4.createEl("div", { cls: "mdquill-btns" });
+    const mk = (label, snippet, tip = "") => {
+      const b = grid.createEl("button", { text: label, cls: "mdquill-btn" });
+      b.title = tip || snippet;
+      b.addEventListener("click", () => {
+        editor.replaceSelection(snippet);
+        editor.focus();
+        this.schedule();
+      });
+    };
+    mk("# \u6807\u9898", "# ");
+    mk("\u8868\u683C 3\xD73", "| \u9879\u76EE | \u8BF4\u660E |\n| :--- | :--- |\n|  |  |\n|  |  |", "md \u8868\u683C\uFF1A\u9996\u884C\u8868\u5934\uFF0C:--- \u5DE6\u5BF9\u9F50 / :---: \u5C45\u4E2D / ---: \u53F3\u5BF9\u9F50");
+    mk("\u5F15\u7528", "> ");
+    mk("\u4EE3\u7801\u5757", "```\n\n```");
+    mk("\u6298\u53E0\u5757", "> [!note] \u6807\u9898\n> \u5185\u5BB9", "Obsidian \u63D0\u793A\u5757\uFF1Anote/tip/warning \u7B49\u7C7B\u578B\u53EF\u6362");
+    mk("\u5F85\u529E\u9879", "- [ ] ");
+    mk("\u5206\u9694\u7EBF", "\n---\n");
+    mk("\u56FE\u7247\u5360\u4F4D", "![\u8BF4\u660E](https://)", "\u5199\u7B14\u8BB0\u65F6\u7559\u4F4D\uFF0C\u5BFC\u51FA\u524D\u66FF\u6362\u4E3A\u771F\u5B9E\u94FE\u63A5");
+    if (!st.nonspace) {
+      const card5 = el.createEl("div", { cls: "mdquill-card mdquill-empty-hint" });
+      card5.createEl("div", {
+        text: "\u7A7A\u7B14\u8BB0\u3002\u76F4\u63A5\u5F00\u59CB\u5199\uFF1A\u6807\u9898\u7528 # \u5F00\u5934\uFF0C\u6BB5\u843D\u95F4\u7A7A\u4E00\u884C\u3002\u5199\u5B8C\u540E\u8FD0\u884C\u300C\u6392\u7248\u4F53\u68C0\u300D\uFF0C\u7C98\u8D34\u5916\u6765\u5185\u5BB9\u524D\u8FD0\u884C\u300C\u7C98\u8D34\u5E76\u51C0\u5316\u300D\u3002"
+      });
+    }
   }
-  return false;
-}
-function detectContext(md) {
-  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) return "generic";
-  return frontmatterIsGongwen(m[1]) ? "gongwen" : "generic";
-}
-var ContextGate = class {
-  constructor() {
-    this.mode = "auto";
+};
+
+// src/settings_tab.ts
+var import_obsidian5 = require("obsidian");
+var RedQuillSettingTab = class extends import_obsidian5.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    /** 正在编辑的自定义预设 id */
+    this.editingId = null;
+    /** 渲染序号：display() 重入时丢弃旧的异步模板清单渲染 */
+    this.renderSeq = 0;
+    this.plugin = plugin;
   }
-  setMode(m) {
-    this.mode = m;
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "RedQuill \u8BBE\u7F6E" });
+    containerEl.createEl("h3", { text: "\u901A\u7528" });
+    new import_obsidian5.Setting(containerEl).setName("\u81EA\u52A8\u51C0\u5316\u7C98\u8D34").setDesc("\u5F00\u542F\u540E\uFF0C\u5728\u7B14\u8BB0\u7F16\u8F91\u5668\u91CC\u7C98\u8D34\u6765\u81EA\u7F51\u9875/Word/WPS \u7684\u5185\u5BB9\u4F1A\u81EA\u52A8\u6E05\u6D17\u683C\u5F0F\uFF08\u4EC5\u5F53\u526A\u8D34\u677F\u5E26 HTML \u6837\u5F0F\u65F6\u624D\u5904\u7406\uFF0C\u7EAF\u6587\u672C\u76F4\u901A\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF0C\u4E5F\u53EF\u968F\u65F6\u7528\u547D\u4EE4\u300C\u7C98\u8D34\u5E76\u51C0\u5316\u300D\u3002").addToggle((t) => {
+      t.setValue(this.plugin.settings.autoClean).onChange(async (v) => {
+        this.plugin.settings.autoClean = v;
+        await this.plugin.saveSettings();
+      });
+    });
+    containerEl.createEl("h3", { text: "\u516C\u6587" });
+    new import_obsidian5.Setting(containerEl).setName("\u6D3B\u52A8\u9884\u8BBE").setDesc("\u9884\u89C8\u4E0E\u5BFC\u51FA\u4F7F\u7528\u7684\u7248\u5F0F\u3002\u9884\u89C8\u9762\u677F\u9876\u90E8\u4E0B\u62C9\u5207\u6362\u540C\u6837\u4F1A\u4FDD\u5B58\u5230\u8FD9\u91CC\u3002").addDropdown((dd) => {
+      for (const p of this.plugin.allPresets()) dd.addOption(p.id, p.name);
+      dd.setValue(this.plugin.settings.activePresetId).onChange(async (v) => {
+        this.plugin.settings.activePresetId = v;
+        await this.plugin.saveSettings();
+        this.plugin.refreshPreviewViews();
+      });
+    });
+    new import_obsidian5.Setting(containerEl).setName("\u9884\u89C8\u6253\u5F00\u65B9\u5F0F").setDesc("\u70B9\u51FB\u9884\u89C8\u6309\u94AE/\u547D\u4EE4\u65F6\u9762\u677F\u7684\u6253\u5F00\u4F4D\u7F6E\u3002\u5DE6\u53F3\u5206\u5C4F = \u4E0E\u7B14\u8BB0\u5E76\u6392\u5BF9\u7167\uFF1B\u65B0\u6807\u7B7E\u9875 = \u4E3B\u5DE5\u4F5C\u533A\u6807\u7B7E\u3002").addDropdown(
+      (dd) => dd.addOption("split", "\u5DE6\u53F3\u5206\u5C4F\uFF08\u9ED8\u8BA4\uFF09").addOption("tab", "\u65B0\u6807\u7B7E\u9875").setValue(this.plugin.settings.previewOpenMode).onChange(async (v) => {
+        this.plugin.settings.previewOpenMode = v === "tab" ? "tab" : "split";
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian5.Setting(containerEl).setName("\u9996\u53E5\u6807\u7C97").setDesc("\u6BCF\u4E2A\u6B63\u6587\u6BB5\u843D\u7684\u7B2C\u4E00\u53E5\uFF08\u622A\u81F3\u7B2C\u4E00\u4E2A\u53E5\u53F7\uFF09\u52A0\u7C97\uFF0C\u9002\u5408\u8BF7\u793A\u3001\u6C47\u62A5\u7684\u6BB5\u65E8\u53E5\u5199\u6CD5\u3002").addToggle(
+      (tg) => tg.setValue(this.plugin.settings.firstSentenceBold).onChange(async (v) => {
+        this.plugin.settings.firstSentenceBold = v;
+        await this.plugin.saveSettings();
+        this.plugin.refreshPreviewViews();
+      })
+    );
+    new import_obsidian5.Setting(containerEl).setName("\u7248\u8BB0\u5206\u9875\u6A21\u5F0F").setDesc(
+      "GB/T 9704 \u53CC\u9762\u5370\u5236\uFF1A\u7248\u8BB0\u7F6E\u4E8E\u516C\u6587\u6700\u540E\u4E00\u9762\uFF08\u53CC\u9762\u5370\u5236\u5373\u5076\u6570\u9875\uFF09\u3002off=\u7248\u8BB0\u968F\u6B63\u6587\uFF08\u77ED\u6587/\u5355\u9762\u6253\u5370\uFF09\uFF1Bauto=\u6B63\u6587\u4E00\u9875\u88C5\u5F97\u4E0B\u5219\u4E0D\u62C6\uFF08\u7248\u8BB0\u7559\u7B2C 1 \u9875\uFF09\uFF0C\u88C5\u4E0D\u4E0B\u624D\u62C6\u5230\u5076\u6570\u9875\uFF08\u63A8\u8350\uFF09\uFF1Bforce=\u6052\u62C6\u5230\u5076\u6570\u9875\uFF08\u6B63\u6587\u6B62\u4E8E\u5076\u6570\u9875\u65F6 Word \u81EA\u52A8\u8865\u7A7A\u767D\u9875\uFF09\u3002\u62C6\u8282\u65F6\u9875\u7801\u6309\u56FD\u6807\u4E24\u5206\u6CD5\u7531\u6761\u4EF6\u57DF\u5728 Word/WPS \u6253\u5F00\u65F6\u6C42\u503C\uFF08\u4EC5\u5F71\u54CD docx \u5BFC\u51FA\uFF1B\u9884\u89C8/PDF \u6253\u5370\u4E0D\u9002\u7528\uFF09\u3002"
+    ).addDropdown(
+      (dd) => dd.addOption("off", "\u5173\u95ED\uFF08\u968F\u6B63\u6587\uFF09").addOption("auto", "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09").addOption("force", "\u5F3A\u5236\u5076\u6570\u9875").setValue(this.plugin.settings.colophonMode).onChange(async (v) => {
+        this.plugin.settings.colophonMode = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    let rightInput;
+    let leftInput;
+    const applyDisabled = (align) => {
+      rightInput.disabled = align !== "right";
+      leftInput.disabled = align !== "left";
+    };
+    new import_obsidian5.Setting(containerEl).setName("\u843D\u6B3E\u5BF9\u9F50").setDesc(
+      "\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u7684\u5BF9\u9F50\uFF1A\u53F3\u5BF9\u9F50\uFF08GB/T 9704\uFF0C\u53F3\u7A7A N \u5B57\uFF09/ \u6C34\u5E73\u5C45\u4E2D / \u5DE6\u5BF9\u9F50\uFF08\u5DE6\u7A7A N \u5B57\uFF0C0=\u9876\u683C\uFF09\u3002\u843D\u6B3E\u4F4D\u7F6E = \u5BF9\u9F50\u65B9\u5F0F + \u5DE6/\u53F3\u7A7A\u5B57\u6570\u5171\u540C\u51B3\u5B9A\uFF0C\u9884\u89C8\u4E0E docx \u5BFC\u51FA\u540C\u6B65\u751F\u6548\u3002"
+    ).addDropdown(
+      (dd) => dd.addOption("right", "\u53F3\u5BF9\u9F50\uFF08GB/T\uFF0C\u53F3\u7A7AN\u5B57\uFF09").addOption("center", "\u6C34\u5E73\u5C45\u4E2D").addOption("left", "\u5DE6\u5BF9\u9F50\uFF08\u5DE6\u7A7AN\u5B57\uFF09").setValue(this.plugin.settings.signatureAlign).onChange(async (v) => {
+        this.plugin.settings.signatureAlign = v;
+        await this.plugin.saveSettings();
+        applyDisabled(v);
+        this.plugin.refreshPreviewViews();
+      })
+    );
+    new import_obsidian5.Setting(containerEl).setName("\u843D\u6B3E\u53F3\u7A7A\uFF08\u5B57\uFF09").setDesc("\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u8DDD\u79BB\uFF08\u53F3\u5BF9\u9F50\u6A21\u5F0F\u751F\u6548\uFF09\u3002GB/T 9704 \u89C4\u5B9A 4 \u5B57\uFF08\u9ED8\u8BA4\uFF09\uFF1B\u5B9E\u52A1\u5E38\u7528 2 \u5B57\u66F4\u8D34\u53F3\uFF1B0=\u7D27\u8D34\u53F3\u8FB9\u8DDD\u3002").addText((tx) => {
+      tx.setValue(String(this.plugin.settings.signatureRightChars));
+      tx.inputEl.type = "number";
+      tx.inputEl.min = "0";
+      tx.inputEl.max = "12";
+      tx.inputEl.step = "1";
+      tx.inputEl.style.width = "5em";
+      rightInput = tx.inputEl;
+      tx.onChange(async (v) => {
+        const n = parseInt(v, 10);
+        if (!isFinite(n) || n < 0 || n > 12) return;
+        this.plugin.settings.signatureRightChars = n;
+        await this.plugin.saveSettings();
+        this.plugin.refreshPreviewViews();
+      });
+    });
+    new import_obsidian5.Setting(containerEl).setName("\u843D\u6B3E\u5DE6\u7A7A\uFF08\u5B57\uFF09").setDesc("\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u76F8\u5BF9\u5DE6\u7248\u5FC3\u8D77\u6392\u7684\u5DE6\u7A7A\uFF08\u5DE6\u5BF9\u9F50\u6A21\u5F0F\u751F\u6548\uFF1B0=\u9876\u683C\u5DE6\u5BF9\u9F50\uFF09\u3002").addText((tx) => {
+      tx.setValue(String(this.plugin.settings.signatureLeftChars));
+      tx.inputEl.type = "number";
+      tx.inputEl.min = "0";
+      tx.inputEl.max = "12";
+      tx.inputEl.step = "1";
+      tx.inputEl.style.width = "5em";
+      leftInput = tx.inputEl;
+      tx.onChange(async (v) => {
+        const n = parseInt(v, 10);
+        if (!isFinite(n) || n < 0 || n > 12) return;
+        this.plugin.settings.signatureLeftChars = n;
+        await this.plugin.saveSettings();
+        this.plugin.refreshPreviewViews();
+      });
+    });
+    applyDisabled(this.plugin.settings.signatureAlign);
+    new import_obsidian5.Setting(containerEl).setName("\u7ED3\u6784\u5C42\u4F4D\u7F6E").setHeading();
+    const charsSetting = (name, desc, get, set) => new import_obsidian5.Setting(containerEl).setName(name).setDesc(desc).addText((tx) => {
+      tx.setValue(String(get()));
+      tx.inputEl.type = "number";
+      tx.inputEl.min = "0";
+      tx.inputEl.max = "12";
+      tx.inputEl.step = "1";
+      tx.inputEl.style.width = "5em";
+      tx.onChange(async (v) => {
+        const n = parseInt(v, 10);
+        if (!isFinite(n) || n < 0 || n > 12) return;
+        set(n);
+        await this.plugin.saveSettings();
+        this.plugin.refreshPreviewViews();
+      });
+    });
+    const s = this.plugin.settings;
+    charsSetting(
+      "\u9644\u6CE8\u5DE6\u7A7A\uFF08\u5B57\uFF09",
+      "rh-notes \u9644\u6CE8\u884C\uFF08\u8054\u7CFB\u4EBA\u7B49\u5706\u62EC\u53F7\u6CE8\uFF09\u76F8\u5BF9\u5DE6\u7248\u5FC3\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 2\uFF08GB/T 9704\uFF09\u3002",
+      () => s.notesIndentChars,
+      (n) => s.notesIndentChars = n
+    );
+    charsSetting(
+      "\u9644\u4EF6\u8BF4\u660E\u5DE6\u7A7A\uFF08\u5B57\uFF09",
+      "rh-attachments \u9644\u4EF6\u8BF4\u660E\u884C\u76F8\u5BF9\u5DE6\u7248\u5FC3\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 2\uFF08GB/T 9704\uFF09\u3002",
+      () => s.attachIndentChars,
+      (n) => s.attachIndentChars = n
+    );
+    charsSetting(
+      "\u7248\u8BB0\u6284\u9001/\u5370\u53D1\u673A\u5173\u5DE6\u7A7A\uFF08\u5B57\uFF09",
+      "rh-cc \u6284\u9001\u884C\u4E0E rh-printOrg \u5370\u53D1\u673A\u5173\u884C\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 1\uFF08GB/T 9704\uFF0C\u6B63\u6587\u56DB\u53F7\u5B57\u5BBD\u8BA1\uFF09\u3002",
+      () => s.colophonLeftChars,
+      (n) => s.colophonLeftChars = n
+    );
+    charsSetting(
+      "\u7248\u8BB0\u5370\u53D1\u65E5\u671F\u53F3\u7A7A\uFF08\u5B57\uFF09",
+      "rh-printDate \u5370\u53D1\u65E5\u671F\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u53F3\u7A7A\uFF0C\u9ED8\u8BA4 1\uFF08GB/T 9704\uFF09\u3002",
+      () => s.printRightChars,
+      (n) => s.printRightChars = n
+    );
+    charsSetting(
+      "\u7248\u8BB0\u5370\u53D1\u4EFD\u6570\u53F3\u7A7A\uFF08\u5B57\uFF09",
+      "rh-printCopies \u5370\u53D1\u4EFD\u6570\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u53F3\u7A7A\uFF0C\u9ED8\u8BA4 3\uFF08GB/T 9704\uFF09\u3002",
+      () => s.copiesRightChars,
+      (n) => s.copiesRightChars = n
+    );
+    new import_obsidian5.Setting(containerEl).setName("\u9884\u8BBE\u7BA1\u7406").setHeading();
+    for (const p of this.plugin.allPresets()) this.presetRow(containerEl, p);
+    new import_obsidian5.Setting(containerEl).addButton(
+      (btn) => btn.setButtonText("\uFF0B \u65B0\u5EFA\u9884\u8BBE\uFF08\u590D\u5236\u5F53\u524D\u6D3B\u52A8\u9884\u8BBE\uFF09").onClick(async () => {
+        const src = this.plugin.activePreset();
+        const preset = clonePreset(src, { id: `custom-${Date.now()}`, name: `${src.name} \u526F\u672C`, builtin: false });
+        this.plugin.settings.customPresets.push(preset);
+        this.plugin.settings.activePresetId = preset.id;
+        await this.plugin.saveSettings();
+        this.editingId = preset.id;
+        this.display();
+        this.plugin.refreshPreviewViews();
+      })
+    );
+    this.renderWriteSection(containerEl);
+    new import_obsidian5.Setting(containerEl).setName("\u516C\u6587\u6A21\u677F").setHeading();
+    const seq = ++this.renderSeq;
+    void this.renderTemplateSection(containerEl, seq);
+    this.renderBackupSection(containerEl);
+    if (this.editingId) {
+      const target = this.plugin.allPresets().find((p) => p.id === this.editingId);
+      if (target) this.presetEditor(containerEl, target);
+      else this.editingId = null;
+    }
   }
-  /** 生效上下文：手动强制 > frontmatter 自动判定 */
-  resolve(md) {
-    if (this.mode === "gongwen") return "gongwen";
-    if (this.mode === "generic") return "generic";
-    return detectContext(md);
+  /** 一行预设：名称 + 操作按钮（内置：编辑/重置/复制；自定义：编辑/删除/复制） */
+  presetRow(containerEl, p) {
+    const overridden = p.builtin && !!this.plugin.builtinOverrideFor(p.id);
+    const tag2 = p.builtin ? overridden ? "\uFF08\u5185\u7F6E \xB7 \u5DF2\u4FEE\u6539\uFF09" : "\uFF08\u5185\u7F6E\uFF09" : "";
+    const active = p.id === this.plugin.settings.activePresetId ? " \xB7 \u5F53\u524D\u4F7F\u7528" : "";
+    const s = new import_obsidian5.Setting(containerEl).setName(`${p.name}${tag2}${active}`);
+    s.addExtraButton(
+      (b) => b.setIcon("pencil").setTooltip("\u7F16\u8F91").onClick(() => {
+        this.editingId = p.id;
+        this.display();
+      })
+    );
+    if (p.builtin) {
+      s.addExtraButton(
+        (b) => b.setIcon("rotate-ccw").setTooltip("\u91CD\u7F6E\u4E3A\u51FA\u5382\u9ED8\u8BA4").onClick(async () => {
+          await this.plugin.resetBuiltinPreset(p.id);
+          if (this.editingId === p.id) this.editingId = null;
+          this.display();
+          new import_obsidian5.Notice(`RedQuill\uFF1A${p.name} \u5DF2\u91CD\u7F6E\u4E3A\u51FA\u5382\u9ED8\u8BA4\u3002`);
+        })
+      );
+    } else {
+      s.addExtraButton(
+        (b) => b.setIcon("trash").setTooltip("\u5220\u9664").onClick(async () => {
+          this.plugin.settings.customPresets = this.plugin.settings.customPresets.filter((x) => x.id !== p.id);
+          if (this.plugin.settings.activePresetId === p.id) {
+            this.plugin.settings.activePresetId = BUILTIN_PRESETS[0].id;
+          }
+          if (this.editingId === p.id) this.editingId = null;
+          await this.plugin.saveSettings();
+          this.display();
+          this.plugin.refreshPreviewViews();
+        })
+      );
+    }
+    s.addExtraButton(
+      (b) => b.setIcon("copy").setTooltip("\u590D\u5236\u4E3A\u65B0\u9884\u8BBE").onClick(async () => {
+        const preset = clonePreset(p, { id: `custom-${Date.now()}`, name: `${p.name} \u526F\u672C`, builtin: false });
+        this.plugin.settings.customPresets.push(preset);
+        this.plugin.settings.activePresetId = preset.id;
+        await this.plugin.saveSettings();
+        this.editingId = preset.id;
+        this.display();
+        this.plugin.refreshPreviewViews();
+      })
+    );
+  }
+  /**
+   * 预设编辑表单。内置预设编辑的是工作副本，每次改动写入覆盖层（出厂定义不动，
+   * 随时可在列表行一键重置）；自定义预设直接改本体。
+   */
+  presetEditor(containerEl, target) {
+    const isBuiltin = target.builtin;
+    const p = isBuiltin ? clonePreset(target, { id: target.id, name: target.name }) : target;
+    const box = containerEl.createEl("div", { cls: "redquill-preset-editor" });
+    box.createEl("h3", { text: `\u7F16\u8F91\uFF1A${p.name}${isBuiltin ? "\uFF08\u5185\u7F6E\uFF0C\u6539\u52A8\u5373\u4FDD\u5B58\uFF0C\u53EF\u91CD\u7F6E\u4E3A\u51FA\u5382\uFF09" : ""}` });
+    const save = () => isBuiltin ? this.plugin.saveBuiltinOverride(p) : this.plugin.saveCustomPreset(p);
+    const num = (label, desc, get, set, unit = "") => {
+      new import_obsidian5.Setting(box).setName(label).setDesc(desc).addText((tx) => {
+        tx.setValue(String(get()));
+        tx.inputEl.type = "number";
+        tx.onChange((v) => {
+          const n = parseFloat(v);
+          if (isFinite(n) && n > 0) {
+            set(n);
+            save();
+          }
+        });
+      });
+    };
+    new import_obsidian5.Setting(box).setName("\u9884\u8BBE\u540D\u79F0").addText(
+      (tx) => tx.setValue(p.name).onChange((v) => {
+        p.name = v.trim() || p.name;
+        save();
+      })
+    );
+    box.createEl("h4", { text: "\u9875\u9762" });
+    num("\u4E0A\u8FB9\u8DDD (mm)", "", () => p.page.top, (v) => p.page.top = v);
+    num("\u4E0B\u8FB9\u8DDD (mm)", "", () => p.page.bottom, (v) => p.page.bottom = v);
+    num("\u5DE6\u8FB9\u8DDD (mm)", "", () => p.page.left, (v) => p.page.left = v);
+    num("\u53F3\u8FB9\u8DDD (mm)", "", () => p.page.right, (v) => p.page.right = v);
+    num("\u6B63\u6587\u884C\u8DDD (\u78C5)", "\u56FA\u5B9A\u503C\u884C\u8DDD", () => p.linePt, (v) => p.linePt = v);
+    num("\u5927\u6807\u9898\u884C\u8DDD (\u78C5)", "\u56FA\u5B9A\u503C\u884C\u8DDD", () => p.titleLinePt, (v) => p.titleLinePt = v);
+    new import_obsidian5.Setting(box).setName("\u9875\u7801\u6837\u5F0F").setDesc("\u516C\u6587\u5F0F\u4E3A GB/T 9704 \u56FA\u5B9A\u6392\u6CD5\uFF08\u5355\u9875\u53F3 / \u53CC\u9875\u5DE6\uFF09\uFF0C\u5FFD\u7565\u4E0B\u65B9\u5BF9\u9F50\u8BBE\u7F6E\u3002").addDropdown((dd) => {
+      for (const o of PAGE_NUMBER_OPTIONS) dd.addOption(o.id, o.label);
+      dd.setValue(p.pageNumber.style).onChange(async (v) => {
+        p.pageNumber.style = v;
+        save();
+      });
+    });
+    new import_obsidian5.Setting(box).setName("\u9875\u7801\u5BF9\u9F50").setDesc("\u975E\u516C\u6587\u5F0F\u9875\u7801\u7684\u5BF9\u9F50\u4F4D\u7F6E").addDropdown(
+      (dd) => dd.addOption("left", "\u5C45\u5DE6").addOption("center", "\u5C45\u4E2D").addOption("right", "\u5C45\u53F3").setValue(p.pageNumber.align).onChange(async (v) => {
+        p.pageNumber.align = v;
+        save();
+      })
+    );
+    num("\u9875\u7801\u5B57\u53F7 (pt)", "\u56FD\u6807\u4E3A\u56DB\u53F7 14pt", () => p.pageNumber.sizePt, (v) => p.pageNumber.sizePt = v);
+    box.createEl("h4", { text: "\u89D2\u8272\u6392\u7248" });
+    for (const key of ["docTitle", "h1", "h2", "h3", "body", "table"]) {
+      const st = p.roles[key];
+      box.createEl("h5", { text: ROLE_LABELS[key] });
+      new import_obsidian5.Setting(box).setName("\u4E2D\u6587\u5B57\u4F53").setDesc("\u7559\u7A7A\u7528\u9ED8\u8BA4\u5B57\u94FE\uFF1B\u586B\u672C\u673A\u5DF2\u5B89\u88C5\u7684\u5B57\u4F53\u540D").addText(
+        (tx) => tx.setValue(st.font).setPlaceholder("\u9ED8\u8BA4").onChange((v) => {
+          st.font = v.trim();
+          save();
+        })
+      );
+      num("\u5B57\u53F7 (pt)", "", () => st.sizePt, (v) => st.sizePt = v);
+      new import_obsidian5.Setting(box).setName("\u52A0\u7C97").addToggle(
+        (tg) => tg.setValue(st.bold).onChange(async (v) => {
+          st.bold = v;
+          save();
+        })
+      );
+      if (key !== "table") {
+        new import_obsidian5.Setting(box).setName("\u5BF9\u9F50").addDropdown(
+          (dd) => dd.addOption("left", "\u5DE6\u5BF9\u9F50").addOption("center", "\u5C45\u4E2D").setValue(st.align).onChange(async (v) => {
+            st.align = v;
+            save();
+          })
+        );
+      }
+      if (key === "h3" || key === "body") {
+        num("\u9996\u884C\u7F29\u8FDB (\u5B57\u7B26)", "0 = \u4E0D\u7F29\u8FDB", () => st.indentChars, (v) => st.indentChars = Math.max(0, Math.floor(v)));
+      }
+    }
+    new import_obsidian5.Setting(box).addButton(
+      (btn) => btn.setButtonText("\u6536\u8D77\u7F16\u8F91\u5668").onClick(() => {
+        this.editingId = null;
+        this.display();
+      })
+    );
+  }
+  /** v0.11.0 写作提效设置：默认发文机关（新建向导预填）+ 写作辅助面板入口 */
+  renderWriteSection(containerEl) {
+    containerEl.createEl("h3", { text: "\u5199\u4F5C" });
+    new import_obsidian5.Setting(containerEl).setName("\u9ED8\u8BA4\u53D1\u6587\u673A\u5173\uFF08\u7EA2\u5934\uFF09").setDesc("\u300C\u65B0\u5EFA\u516C\u6587\u300D\u5411\u5BFC\u81EA\u52A8\u628A\u8BE5\u673A\u5173\u9884\u586B\u8FDB frontmatter \u7684 rh-agency\uFF1B\u8054\u5408\u884C\u6587\u7528 / \u5206\u9694\u591A\u673A\u5173\u3002\u7559\u7A7A = \u7528\u6A21\u677F\u5360\u4F4D\u300CXX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\u300D\u3002").addText(
+      (tx) => tx.setPlaceholder("XX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6").setValue(this.plugin.settings.defaultAgency).onChange(async (v) => {
+        this.plugin.settings.defaultAgency = v.trim().replace(/\s+/g, " ").slice(0, 80);
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian5.Setting(containerEl).setName("\u5199\u4F5C\u8F85\u52A9\u9762\u677F").setDesc("\u53F3\u4FA7\u680F\u8DDF\u968F\u5149\u6807\u8BCA\u65AD\u5F53\u524D\u884C\u7684\u516C\u6587\u89D2\u8272\uFF08\u6807\u9898\u5C42\u7EA7/\u6B63\u6587/\u8868\u683C\u2026\uFF09\uFF0C\u7ED9\u4E0B\u4E00\u7EA7\u6807\u9898\u5E8F\u53F7\u5EFA\u8BAE\u4E0E\u5FEB\u6377\u63D2\u5165\uFF1B\u4E5F\u53EF\u7528\u547D\u4EE4\u300C\u6253\u5F00\u5199\u4F5C\u8F85\u52A9\u9762\u677F\u300D\u3002").addButton((b) => b.setButtonText("\u6253\u5F00").onClick(() => this.plugin.openWriteAssistBtn()));
+  }
+  /** v0.8.0 备份与同步：导出全部设置 / 导入（备份列表 + 粘贴 JSON） */
+  renderBackupSection(containerEl) {
+    containerEl.createEl("h3", { text: "\u5907\u4EFD\u4E0E\u540C\u6B65" });
+    containerEl.createEl("p", {
+      text: "\u53CC\u673A\u6216\u540C\u4E8B\u95F4\u540C\u6B65\u540C\u4E00\u5957\u7248\u5F0F\uFF1A\u5BFC\u51FA\u540E\u5728\u53E6\u4E00\u53F0\u5BFC\u5165\u5373\u53EF\uFF08\u5907\u4EFD\u6587\u4EF6\u653E vault \u6839\u76EE\u5F55\uFF0C\u968F\u5E93\u540C\u6B65\uFF09\u3002",
+      cls: "setting-item-description"
+    });
+    new import_obsidian5.Setting(containerEl).setName("\u5BFC\u51FA\u5168\u90E8\u8BBE\u7F6E").setDesc("\u81EA\u5B9A\u4E49\u9884\u8BBE + \u7248\u5F0F\u53C2\u6570\uFF08\u843D\u6B3E\u5BF9\u9F50\u3001\u7ED3\u6784\u5C42\u4F4D\u7F6E\u3001\u7248\u8BB0\u5206\u9875\u3001\u9996\u53E5\u6807\u7C97\u7B49\uFF09\u6253\u5305\u4E3A JSON\u3002").addButton((b) => b.setButtonText("\u5BFC\u51FA JSON").setCta().onClick(() => void this.plugin.exportSettingsJson()));
+    new import_obsidian5.Setting(containerEl).setName("\u5BFC\u5165\u8BBE\u7F6E").setDesc("\u4ECE\u672C\u5E93 redquill-settings-*.json \u5907\u4EFD\u6062\u590D\uFF0C\u6216\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 JSON\u3002\u5BFC\u5165\u81EA\u52A8\u6821\u9A8C\uFF0C\u975E\u6CD5\u9879\u56DE\u9ED8\u8BA4\u3002").addButton((b) => b.setButtonText("\u5BFC\u5165\u2026").onClick(() => new SettingsBackupModal(this.plugin).open()));
+  }
+  /** 公文模板清单：按行文方向三组折叠（对上/平级/对下），勾选 + 单独安装 + 批量 */
+  async renderTemplateSection(containerEl, seq) {
+    const adapter = this.plugin.app.vault.adapter;
+    let folder;
+    try {
+      folder = await this.plugin.templateFolder();
+    } catch {
+      return;
+    }
+    if (seq !== this.renderSeq) return;
+    const box = containerEl.createEl("div", { cls: "redquill-template-list" });
+    const tpHint = this.plugin.isTemplaterInstalled() ? "\u68C0\u6D4B\u5230 Templater\uFF1A\u5B89\u88C5\u65F6\u540C\u65F6\u5199\u5165\u300C(\u5F39\u7A97)\u300D\u7248\u3002" : "\u672A\u68C0\u6D4B\u5230 Templater\uFF1A\u53EA\u5B89\u88C5\u666E\u901A\u7248\uFF08\u88C5 Templater \u540E\u91CD\u88C5\u53EF\u8865\u5F39\u7A97\u7248\uFF09\u3002";
+    new import_obsidian5.Setting(box).setName("\u6279\u91CF\u5B89\u88C5").setDesc(`\u5199\u5165\u300C${folder}\u300D\uFF08\u5DF2\u5B58\u5728\u7684\u4E0D\u8986\u76D6\uFF09\u3002\u63D2\u5165\u7528 Obsidian\u300C\u63D2\u5165\u6A21\u677F\u300D\u6216 Templater\u3002${tpHint}`).addButton(
+      (btn) => btn.setButtonText("\u5B89\u88C5\u6240\u9009").onClick(async () => {
+        const keys = this.plugin.settings.templateSelection.filter((k) => GONGWEN_TEMPLATES[k]);
+        if (!keys.length) {
+          new import_obsidian5.Notice("RedQuill\uFF1A\u5148\u52FE\u9009\u8981\u5B89\u88C5\u7684\u6587\u79CD\u3002");
+          return;
+        }
+        const r = await this.plugin.installTemplates(keys);
+        new import_obsidian5.Notice(installResultText(r), 6e3);
+        this.display();
+      })
+    ).addButton(
+      (btn) => btn.setButtonText("\u5168\u90E8\u5B89\u88C5").onClick(async () => {
+        const r = await this.plugin.installTemplates(Object.keys(GONGWEN_TEMPLATES));
+        new import_obsidian5.Notice(installResultText(r), 6e3);
+        this.display();
+      })
+    );
+    for (const group of TEMPLATE_GROUPS) {
+      const details = box.createEl("details", { cls: "redquill-tgroup" });
+      const selCount = group.keys.filter((k) => this.plugin.settings.templateSelection.includes(k)).length;
+      details.createEl("summary", {
+        text: `${group.label}\uFF08${group.keys.length} \u4E2A\u6587\u79CD\uFF0C\u5DF2\u9009 ${selCount}\uFF09`
+      });
+      for (const key of group.keys) {
+        const meta = TEMPLATE_META[key] ?? { label: key, desc: "" };
+        let installed = false;
+        let installedTp = false;
+        try {
+          installed = await adapter.exists(`${folder}/${key}.md`);
+          installedTp = await adapter.exists(`${folder}/${key}(\u5F39\u7A97).md`);
+        } catch {
+        }
+        if (seq !== this.renderSeq) return;
+        const status = installed || installedTp ? " \xB7 \u5DF2\u5B89\u88C5" : "";
+        const tag2 = installed && installedTp ? "\uFF08\u542B\u5F39\u7A97\u7248\uFF09" : installedTp ? "\uFF08\u4EC5\u5F39\u7A97\u7248\uFF09" : "";
+        const selected = this.plugin.settings.templateSelection.includes(key);
+        new import_obsidian5.Setting(details).setName(`${meta.label}${status}${tag2}`).setDesc(meta.desc).addToggle(
+          (tg) => tg.setValue(selected).onChange(async (v) => {
+            const cur = new Set(this.plugin.settings.templateSelection);
+            if (v) cur.add(key);
+            else cur.delete(key);
+            this.plugin.settings.templateSelection = [...cur];
+            await this.plugin.saveSettings();
+          })
+        ).addExtraButton(
+          (b) => b.setIcon("download").setTooltip("\u5B89\u88C5\u6B64\u6A21\u677F").onClick(async () => {
+            const r = await this.plugin.installTemplates([key]);
+            new import_obsidian5.Notice(
+              r.created || r.tpCreated ? `RedQuill\uFF1A\u5DF2\u5B89\u88C5\u300C${meta.label}\u300D${r.tpCreated ? "\uFF08\u542B\u5F39\u7A97\u7248\uFF09" : ""}\u3002` : `RedQuill\uFF1A\u300C${meta.label}\u300D\u5DF2\u5B58\u5728\uFF0C\u672A\u8986\u76D6\u3002`
+            );
+            this.display();
+          })
+        );
+      }
+    }
   }
 };
 
@@ -23680,1024 +24723,7 @@ var import_state2 = require("@codemirror/state");
 var VIEW_TYPE_PREVIEW = "redquill-preview";
 var VIEW_TYPE_WRITEASSIST = "redquill-write";
 var VIEW_TYPE_PANEL = "redquill-panel";
-var PreviewView = class extends import_obsidian.ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    /** 当前预览的笔记（openPreview 在 leaf 激活前捕获后写入） */
-    this.file = null;
-    this.plugin = plugin;
-  }
-  getViewType() {
-    return VIEW_TYPE_PREVIEW;
-  }
-  getDisplayText() {
-    return "\u6392\u7248\u9884\u89C8";
-  }
-  getIcon() {
-    return "file-text";
-  }
-  async onOpen() {
-    this.render();
-    this.registerEvent(
-      this.plugin.app.workspace.on("active-leaf-change", async () => {
-        const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-        if (mv?.file && mv.file !== this.file) {
-          this.file = mv.file;
-          await this.render();
-        }
-      })
-    );
-  }
-  async render() {
-    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-    if (mv?.file) this.file = mv.file;
-    const content = this.contentEl;
-    content.empty();
-    const bar = content.createEl("div", { cls: "redquill-bar" });
-    const select = bar.createEl("select", { cls: "dropdown" });
-    for (const p of this.plugin.allPresets()) {
-      select.createEl("option", { value: p.id, text: p.name }).selected = p.id === this.plugin.settings.activePresetId;
-    }
-    select.addEventListener("change", async () => {
-      this.plugin.settings.activePresetId = select.value;
-      await this.plugin.saveSettings();
-      await this.render();
-    });
-    const boldLabel = bar.createEl("label", { cls: "redquill-toggle" });
-    const boldCheck = boldLabel.createEl("input", { type: "checkbox" });
-    boldCheck.checked = this.plugin.settings.firstSentenceBold;
-    boldLabel.createEl("span", { text: "\u9996\u53E5\u6807\u7C97" });
-    boldCheck.addEventListener("change", async () => {
-      this.plugin.settings.firstSentenceBold = boldCheck.checked;
-      await this.plugin.saveSettings();
-      await this.render();
-    });
-    const btn = bar.createEl("button", { text: "\u5BFC\u51FA docx", cls: "mod-cta" });
-    btn.addEventListener("click", () => this.exportDocx());
-    const checkBtn = bar.createEl("button", { text: "\u4F53\u68C0" });
-    checkBtn.addEventListener("click", () => {
-      if (this.file) void this.plugin.openCheck(this.file);
-    });
-    const pdfBtn = bar.createEl("button", { text: "\u6253\u5370 / \u5B58\u4E3A PDF" });
-    pdfBtn.addEventListener("click", () => this.printPdf());
-    const paper = content.createEl("div", { cls: "redquill-paper" });
-    if (!this.file) {
-      paper.createEl("p", { text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\u81EA\u52A8\u9884\u89C8\u3002" });
-      return;
-    }
-    const md = await this.plugin.app.vault.cachedRead(this.file);
-    const { meta, blocks, attach } = parseDocument(md);
-    const { logoUrl, sealUrl } = await this.plugin.resolveLogo(meta);
-    paper.innerHTML = renderPreview(blocks, this.plugin.activePreset(), {
-      firstSentenceBold: this.plugin.settings.firstSentenceBold,
-      meta,
-      logoUrl,
-      sealUrl,
-      attach,
-      struct: this.plugin.structLayout()
-    });
-  }
-  async exportDocx() {
-    if (!this.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\u3002");
-      return;
-    }
-    const md = await this.plugin.app.vault.cachedRead(this.file);
-    const { meta, blocks, attach } = parseDocument(md);
-    const warn = validateDocNumber(meta.docNumber);
-    if (warn) new import_obsidian.Notice(`RedQuill\uFF1A${warn}`, 8e3);
-    const { logo, seal } = await this.plugin.resolveLogo(meta);
-    const blob = await buildDocxBlob(blocks, this.plugin.activePreset(), {
-      firstSentenceBold: this.plugin.settings.firstSentenceBold,
-      meta,
-      logo,
-      seal,
-      attach,
-      colophonMode: this.plugin.settings.colophonMode,
-      struct: this.plugin.structLayout()
-    });
-    const path = this.file.path.replace(/\.md$/i, ".docx");
-    await this.plugin.app.vault.adapter.writeBinary(path, await blob.arrayBuffer());
-    new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${path}`);
-  }
-  /**
-   * M3 PDF：预览即真相源——把预览面板同一份 renderPreview HTML 注入隐藏 iframe，
-   * @page A4 零边距（.rg-page 自带页边距 padding），走 Electron 打印管线「另存为 PDF」。
-   */
-  async printPdf() {
-    if (!this.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\u3002");
-      return;
-    }
-    const md = await this.plugin.app.vault.cachedRead(this.file);
-    const { meta, blocks, attach } = parseDocument(md);
-    const { logoUrl, sealUrl } = await this.plugin.resolveLogo(meta);
-    const inner = renderPreview(blocks, this.plugin.activePreset(), {
-      firstSentenceBold: this.plugin.settings.firstSentenceBold,
-      meta,
-      logoUrl,
-      sealUrl,
-      attach,
-      struct: this.plugin.structLayout()
-    });
-    const safeName = this.file.basename.replace(/[<>&"]/g, "");
-    const html2 = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeName}</title><style>
-@page { size: A4; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; }
-.rg-page { min-height: auto; }
-</style></head><body>${inner}</body></html>`;
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed; right:0; bottom:0; width:1px; height:1px; border:0; opacity:0;";
-    iframe.srcdoc = html2;
-    iframe.addEventListener("load", () => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } finally {
-        window.setTimeout(() => iframe.remove(), 6e4);
-      }
-    });
-    document.body.appendChild(iframe);
-    new import_obsidian.Notice("RedQuill\uFF1A\u6253\u5370\u5BF9\u8BDD\u6846\u4E2D\u9009\u300C\u53E6\u5B58\u4E3A PDF\u300D\u5373\u53EF\uFF08PDF \u4E0E\u9884\u89C8\u96F6\u5DEE\u5F02\uFF09\u3002", 6e3);
-  }
-  async onClose() {
-  }
-};
-var ROLE_LABELS = {
-  docTitle: "\u5927\u6807\u9898",
-  h1: "\u4E00\u7EA7\u6807\u9898",
-  h2: "\u4E8C\u7EA7\u6807\u9898",
-  h3: "\u4E09\u7EA7\u6807\u9898",
-  body: "\u6B63\u6587",
-  table: "\u8868\u683C\uFF08\u8868\u5185\u6587\u5B57\uFF09"
-};
-function installResultText(r) {
-  const base = `RedQuill\uFF1A\u65B0\u5EFA ${r.created} \u4E2A${r.skipped ? `\u3001\u8DF3\u8FC7\u5DF2\u5B58\u5728 ${r.skipped} \u4E2A` : ""}`;
-  const tp = r.tpCreated || r.tpSkipped ? `\uFF1B\u5F39\u7A97\u7248 ${r.tpCreated} \u4E2A${r.tpSkipped ? `\u3001\u8DF3\u8FC7 ${r.tpSkipped} \u4E2A` : ""}` : "";
-  return `${base}${tp}\uFF08${r.folder}\uFF09\u3002`;
-}
-var WriteAssistView = class extends import_obsidian.ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    /** 防抖句柄：editor-change / 切文件都触发重渲，200ms 合并 */
-    this.pending = null;
-    this.plugin = plugin;
-  }
-  getViewType() {
-    return VIEW_TYPE_WRITEASSIST;
-  }
-  getDisplayText() {
-    return "\u5199\u4F5C\u8F85\u52A9";
-  }
-  getIcon() {
-    return "pen-tool";
-  }
-  async onOpen() {
-    this.registerEvent(this.plugin.app.workspace.on("active-leaf-change", () => this.schedule()));
-    this.registerEvent(this.plugin.app.workspace.on("editor-change", () => this.schedule()));
-    this.renderPanel();
-  }
-  /** 合并触发：200ms 内多次事件只渲一次 */
-  schedule() {
-    if (this.pending !== null) window.clearTimeout(this.pending);
-    this.pending = window.setTimeout(() => {
-      this.pending = null;
-      this.renderPanel();
-    }, 200);
-  }
-  renderPanel() {
-    const el = this.contentEl;
-    el.empty();
-    el.createEl("h4", { text: "\u5199\u4F5C\u8F85\u52A9" });
-    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-    if (!mv?.file) {
-      el.createEl("p", {
-        text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\uFF0C\u8FD9\u91CC\u8DDF\u968F\u5149\u6807\u8BCA\u65AD\u6BCF\u4E00\u884C\u7684\u516C\u6587\u89D2\u8272\uFF0C\u5E76\u7ED9\u51FA\u6807\u9898\u5E8F\u53F7\u5EFA\u8BAE\u3002",
-        cls: "setting-item-description"
-      });
-      return;
-    }
-    const editor = mv.editor;
-    const cursor = editor.getCursor();
-    const lineText = editor.getLine(cursor.line);
-    const info = lineRole(lineText);
-    const card = el.createEl("div", { cls: "redquill-write-card" });
-    card.createEl("div", { cls: "redquill-write-role", text: `\u7B2C ${cursor.line + 1} \u884C \xB7 ${info.label}` });
-    if (info.tip) card.createEl("div", { cls: "setting-item-description", text: info.tip });
-    const all = editor.getValue().split("\n");
-    const n1 = nextH1(all);
-    const n2 = nextH2(all);
-    const hint = el.createEl("p", { cls: "redquill-write-hint" });
-    hint.createSpan({ text: `\u4E0B\u4E00\u4E2A\u5E8F\u53F7\u5EFA\u8BAE\uFF1A\u4E00\u7EA7 ${n1}\u3000\u4E8C\u7EA7 ${n2}` });
-    el.createEl("h5", { text: "\u63D2\u5165\uFF08\u5149\u6807\u5904\uFF09" });
-    const grid = el.createEl("div", { cls: "redquill-write-btns" });
-    const mk = (label, snippet, tip = "") => {
-      const b = grid.createEl("button", { text: label, cls: "redquill-write-btn" });
-      b.title = tip || snippet;
-      b.addEventListener("click", () => {
-        editor.replaceSelection(snippet);
-        editor.focus();
-        this.schedule();
-      });
-    };
-    mk(`\u4E00\u7EA7 ${n1}`, `## ${n1}`);
-    mk(`\u4E8C\u7EA7 ${n2}`, `### ${n2}`);
-    mk("\u4E09\u7EA7 1.", "#### 1.");
-    mk("\u6587\u4EF6\u6807\u9898", "# ");
-    mk("\u8868\u683C", "| \u9879\u76EE | \u8BF4\u660E |\n| :--- | :--- |\n|  |  |\n|  |  |");
-    mk("\u9644\u4EF6\u53E6\u9762", "\n---\n", "\u6B63\u6587\u540E\u5355\u72EC\u4E00\u884C ---\uFF1A\u4E4B\u540E\u7684\u5185\u5BB9\u53E6\u9762\u8D77\u6392\u4E3A\u9644\u4EF6\u533A\uFF08\u6807\u9898\u5199 # \u9644\u4EF6N\uFF1A\u6807\u9898\uFF09");
-    el.createEl("h5", { text: "\u5E38\u7528" });
-    const ops = el.createEl("div", { cls: "redquill-write-btns" });
-    const op = (label, fn) => {
-      const b = ops.createEl("button", { text: label, cls: "redquill-write-btn" });
-      b.addEventListener("click", fn);
-    };
-    op("\u516C\u6587\u5C5E\u6027\u8868\u5355", () => {
-      const meta = parseDocument(editor.getValue()).meta;
-      new GongwenFormModal(this.plugin, meta).open();
-    });
-    op("\u6392\u7248\u4F53\u68C0", () => {
-      if (mv.file) void this.plugin.openCheck(mv.file);
-    });
-    op("\u5BFC\u51FA docx", () => {
-      void this.plugin.exportActiveDocx();
-    });
-  }
-};
-var RedQuillPanelView = class extends import_obsidian.ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.pending = null;
-    this.plugin = plugin;
-  }
-  getViewType() {
-    return VIEW_TYPE_PANEL;
-  }
-  getDisplayText() {
-    return "\u5199\u4F5C\u9762\u677F";
-  }
-  getIcon() {
-    return "gauge";
-  }
-  async onOpen() {
-    this.registerEvent(this.plugin.app.workspace.on("active-leaf-change", () => this.schedule()));
-    this.registerEvent(this.plugin.app.workspace.on("editor-change", () => this.schedule()));
-    this.renderPanel();
-  }
-  /** 合并触发：200ms 内多次事件只渲一次 */
-  schedule() {
-    if (this.pending !== null) window.clearTimeout(this.pending);
-    this.pending = window.setTimeout(() => {
-      this.pending = null;
-      this.renderPanel();
-    }, 200);
-  }
-  renderPanel() {
-    const el = this.contentEl;
-    el.empty();
-    el.createEl("h4", { text: "RedQuill \u5199\u4F5C\u9762\u677F" });
-    const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-    if (!mv?.file) {
-      el.createEl("p", {
-        text: "\u6253\u5F00\u4E00\u4E2A md \u7B14\u8BB0\u540E\uFF0C\u8FD9\u91CC\u663E\u793A\u5B57\u6570\u3001\u6392\u7248\u4F53\u68C0\u901F\u89C8\u4E0E\u6807\u9898\u6811\u3002",
-        cls: "setting-item-description"
-      });
-      return;
-    }
-    const editor = mv.editor;
-    const text = editor.getValue();
-    const cursor = editor.getCursor();
-    const st = charStats(text);
-    const card1 = el.createEl("div", { cls: "mdquill-card" });
-    card1.createEl("div", { cls: "mdquill-card-title", text: "\u5B57\u6570" });
-    const stat = card1.createEl("div", { cls: "mdquill-stats" });
-    stat.createSpan({ text: `\u4E2D\u6587 ${st.chinese}` });
-    stat.createSpan({ text: `\u975E\u7A7A\u767D ${st.nonspace}` });
-    stat.createSpan({ text: `\u603B\u5B57\u7B26 ${st.total}` });
-    const paragraphs = text.split("\n").filter((l) => l.trim().length > 0).length;
-    stat.createSpan({ text: `\u6BB5 ${paragraphs}` });
-    stat.createSpan({ text: `\u5149\u6807\u7B2C ${cursor.line + 1} \u884C` });
-    const issues = checkDocument2(text);
-    const errs = issues.filter((i) => i.level === "error").length;
-    const warns = issues.length - errs;
-    const card2 = el.createEl("div", { cls: "mdquill-card" });
-    const head2 = card2.createEl("div", { cls: "mdquill-card-head" });
-    head2.createEl("div", {
-      cls: "mdquill-card-title",
-      text: `\u516B\u6761\u4F53\u68C0${issues.length ? `\uFF1A${errs} \u5904\u9700\u5904\u7406 / ${warns} \u5904\u5EFA\u8BAE` : "\uFF1A\u901A\u8FC7"}`
-    });
-    const btn2 = head2.createEl("button", { text: issues.length ? "\u770B\u62A5\u544A" : "\u518D\u4F53\u68C0", cls: "mdquill-btn" });
-    btn2.addEventListener("click", () => {
-      if (mv.file) new CheckReportModal(this.plugin, mv.file, issues).open();
-    });
-    const items = outlineOf(text);
-    const card3 = el.createEl("div", { cls: "mdquill-card" });
-    card3.createEl("div", { cls: "mdquill-card-title", text: `\u6807\u9898\u6811${items.length ? `\uFF08${items.length}\uFF09` : ""}` });
-    if (!items.length) {
-      card3.createEl("div", { cls: "setting-item-description", text: "\u8FD8\u6CA1\u6709 # \u4E00\u7EA7\u6807\u9898\u3002\u70B9\u4E0B\u65B9\u300C\u63D2\u5165\u300D\u91CC\u7684 # \u5F00\u59CB\u3002" });
-    } else {
-      const tree = card3.createEl("div", { cls: "mdquill-tree" });
-      let activeIdx = -1;
-      for (let i = 0; i < items.length; i++) if (items[i].line <= cursor.line + 1) activeIdx = i;
-      items.forEach((it, i) => {
-        const row = tree.createEl("div", {
-          cls: `mdquill-tree-item mdquill-h${it.level}${i === activeIdx ? " active" : ""}`,
-          text: it.text
-        });
-        row.title = `\u7B2C ${it.line} \u884C \xB7 \u70B9\u51FB\u8DF3\u8F6C`;
-        row.addEventListener("click", () => {
-          editor.setCursor({ line: it.line - 1, ch: 0 });
-          editor.scrollIntoView({ from: { line: it.line - 1, ch: 0 }, to: { line: it.line - 1, ch: 0 } }, true);
-          editor.focus();
-        });
-      });
-    }
-    const card4 = el.createEl("div", { cls: "mdquill-card" });
-    card4.createEl("div", { cls: "mdquill-card-title", text: "\u63D2\u5165\uFF08\u5149\u6807\u5904\uFF09" });
-    const grid = card4.createEl("div", { cls: "mdquill-btns" });
-    const mk = (label, snippet, tip = "") => {
-      const b = grid.createEl("button", { text: label, cls: "mdquill-btn" });
-      b.title = tip || snippet;
-      b.addEventListener("click", () => {
-        editor.replaceSelection(snippet);
-        editor.focus();
-        this.schedule();
-      });
-    };
-    mk("# \u6807\u9898", "# ");
-    mk("\u8868\u683C 3\xD73", "| \u9879\u76EE | \u8BF4\u660E |\n| :--- | :--- |\n|  |  |\n|  |  |", "md \u8868\u683C\uFF1A\u9996\u884C\u8868\u5934\uFF0C:--- \u5DE6\u5BF9\u9F50 / :---: \u5C45\u4E2D / ---: \u53F3\u5BF9\u9F50");
-    mk("\u5F15\u7528", "> ");
-    mk("\u4EE3\u7801\u5757", "```\n\n```");
-    mk("\u6298\u53E0\u5757", "> [!note] \u6807\u9898\n> \u5185\u5BB9", "Obsidian \u63D0\u793A\u5757\uFF1Anote/tip/warning \u7B49\u7C7B\u578B\u53EF\u6362");
-    mk("\u5F85\u529E\u9879", "- [ ] ");
-    mk("\u5206\u9694\u7EBF", "\n---\n");
-    mk("\u56FE\u7247\u5360\u4F4D", "![\u8BF4\u660E](https://)", "\u5199\u7B14\u8BB0\u65F6\u7559\u4F4D\uFF0C\u5BFC\u51FA\u524D\u66FF\u6362\u4E3A\u771F\u5B9E\u94FE\u63A5");
-    if (!st.nonspace) {
-      const card5 = el.createEl("div", { cls: "mdquill-card mdquill-empty-hint" });
-      card5.createEl("div", {
-        text: "\u7A7A\u7B14\u8BB0\u3002\u76F4\u63A5\u5F00\u59CB\u5199\uFF1A\u6807\u9898\u7528 # \u5F00\u5934\uFF0C\u6BB5\u843D\u95F4\u7A7A\u4E00\u884C\u3002\u5199\u5B8C\u540E\u8FD0\u884C\u300C\u6392\u7248\u4F53\u68C0\u300D\uFF0C\u7C98\u8D34\u5916\u6765\u5185\u5BB9\u524D\u8FD0\u884C\u300C\u7C98\u8D34\u5E76\u51C0\u5316\u300D\u3002"
-      });
-    }
-  }
-};
-var RedQuillSettingTab = class extends import_obsidian.PluginSettingTab {
-  constructor(app, plugin) {
-    super(app, plugin);
-    /** 正在编辑的自定义预设 id */
-    this.editingId = null;
-    /** 渲染序号：display() 重入时丢弃旧的异步模板清单渲染 */
-    this.renderSeq = 0;
-    this.plugin = plugin;
-  }
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.createEl("h2", { text: "RedQuill \u8BBE\u7F6E" });
-    containerEl.createEl("h3", { text: "\u901A\u7528" });
-    new import_obsidian.Setting(containerEl).setName("\u81EA\u52A8\u51C0\u5316\u7C98\u8D34").setDesc("\u5F00\u542F\u540E\uFF0C\u5728\u7B14\u8BB0\u7F16\u8F91\u5668\u91CC\u7C98\u8D34\u6765\u81EA\u7F51\u9875/Word/WPS \u7684\u5185\u5BB9\u4F1A\u81EA\u52A8\u6E05\u6D17\u683C\u5F0F\uFF08\u4EC5\u5F53\u526A\u8D34\u677F\u5E26 HTML \u6837\u5F0F\u65F6\u624D\u5904\u7406\uFF0C\u7EAF\u6587\u672C\u76F4\u901A\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF0C\u4E5F\u53EF\u968F\u65F6\u7528\u547D\u4EE4\u300C\u7C98\u8D34\u5E76\u51C0\u5316\u300D\u3002").addToggle((t) => {
-      t.setValue(this.plugin.settings.autoClean).onChange(async (v) => {
-        this.plugin.settings.autoClean = v;
-        await this.plugin.saveSettings();
-      });
-    });
-    containerEl.createEl("h3", { text: "\u516C\u6587" });
-    new import_obsidian.Setting(containerEl).setName("\u6D3B\u52A8\u9884\u8BBE").setDesc("\u9884\u89C8\u4E0E\u5BFC\u51FA\u4F7F\u7528\u7684\u7248\u5F0F\u3002\u9884\u89C8\u9762\u677F\u9876\u90E8\u4E0B\u62C9\u5207\u6362\u540C\u6837\u4F1A\u4FDD\u5B58\u5230\u8FD9\u91CC\u3002").addDropdown((dd) => {
-      for (const p of this.plugin.allPresets()) dd.addOption(p.id, p.name);
-      dd.setValue(this.plugin.settings.activePresetId).onChange(async (v) => {
-        this.plugin.settings.activePresetId = v;
-        await this.plugin.saveSettings();
-        this.plugin.refreshPreviewViews();
-      });
-    });
-    new import_obsidian.Setting(containerEl).setName("\u9884\u89C8\u6253\u5F00\u65B9\u5F0F").setDesc("\u70B9\u51FB\u9884\u89C8\u6309\u94AE/\u547D\u4EE4\u65F6\u9762\u677F\u7684\u6253\u5F00\u4F4D\u7F6E\u3002\u5DE6\u53F3\u5206\u5C4F = \u4E0E\u7B14\u8BB0\u5E76\u6392\u5BF9\u7167\uFF1B\u65B0\u6807\u7B7E\u9875 = \u4E3B\u5DE5\u4F5C\u533A\u6807\u7B7E\u3002").addDropdown(
-      (dd) => dd.addOption("split", "\u5DE6\u53F3\u5206\u5C4F\uFF08\u9ED8\u8BA4\uFF09").addOption("tab", "\u65B0\u6807\u7B7E\u9875").setValue(this.plugin.settings.previewOpenMode).onChange(async (v) => {
-        this.plugin.settings.previewOpenMode = v === "tab" ? "tab" : "split";
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("\u9996\u53E5\u6807\u7C97").setDesc("\u6BCF\u4E2A\u6B63\u6587\u6BB5\u843D\u7684\u7B2C\u4E00\u53E5\uFF08\u622A\u81F3\u7B2C\u4E00\u4E2A\u53E5\u53F7\uFF09\u52A0\u7C97\uFF0C\u9002\u5408\u8BF7\u793A\u3001\u6C47\u62A5\u7684\u6BB5\u65E8\u53E5\u5199\u6CD5\u3002").addToggle(
-      (tg) => tg.setValue(this.plugin.settings.firstSentenceBold).onChange(async (v) => {
-        this.plugin.settings.firstSentenceBold = v;
-        await this.plugin.saveSettings();
-        this.plugin.refreshPreviewViews();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("\u7248\u8BB0\u5206\u9875\u6A21\u5F0F").setDesc(
-      "GB/T 9704 \u53CC\u9762\u5370\u5236\uFF1A\u7248\u8BB0\u7F6E\u4E8E\u516C\u6587\u6700\u540E\u4E00\u9762\uFF08\u53CC\u9762\u5370\u5236\u5373\u5076\u6570\u9875\uFF09\u3002off=\u7248\u8BB0\u968F\u6B63\u6587\uFF08\u77ED\u6587/\u5355\u9762\u6253\u5370\uFF09\uFF1Bauto=\u6B63\u6587\u4E00\u9875\u88C5\u5F97\u4E0B\u5219\u4E0D\u62C6\uFF08\u7248\u8BB0\u7559\u7B2C 1 \u9875\uFF09\uFF0C\u88C5\u4E0D\u4E0B\u624D\u62C6\u5230\u5076\u6570\u9875\uFF08\u63A8\u8350\uFF09\uFF1Bforce=\u6052\u62C6\u5230\u5076\u6570\u9875\uFF08\u6B63\u6587\u6B62\u4E8E\u5076\u6570\u9875\u65F6 Word \u81EA\u52A8\u8865\u7A7A\u767D\u9875\uFF09\u3002\u62C6\u8282\u65F6\u9875\u7801\u6309\u56FD\u6807\u4E24\u5206\u6CD5\u7531\u6761\u4EF6\u57DF\u5728 Word/WPS \u6253\u5F00\u65F6\u6C42\u503C\uFF08\u4EC5\u5F71\u54CD docx \u5BFC\u51FA\uFF1B\u9884\u89C8/PDF \u6253\u5370\u4E0D\u9002\u7528\uFF09\u3002"
-    ).addDropdown(
-      (dd) => dd.addOption("off", "\u5173\u95ED\uFF08\u968F\u6B63\u6587\uFF09").addOption("auto", "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09").addOption("force", "\u5F3A\u5236\u5076\u6570\u9875").setValue(this.plugin.settings.colophonMode).onChange(async (v) => {
-        this.plugin.settings.colophonMode = v;
-        await this.plugin.saveSettings();
-      })
-    );
-    let rightInput;
-    let leftInput;
-    const applyDisabled = (align) => {
-      rightInput.disabled = align !== "right";
-      leftInput.disabled = align !== "left";
-    };
-    new import_obsidian.Setting(containerEl).setName("\u843D\u6B3E\u5BF9\u9F50").setDesc(
-      "\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u7684\u5BF9\u9F50\uFF1A\u53F3\u5BF9\u9F50\uFF08GB/T 9704\uFF0C\u53F3\u7A7A N \u5B57\uFF09/ \u6C34\u5E73\u5C45\u4E2D / \u5DE6\u5BF9\u9F50\uFF08\u5DE6\u7A7A N \u5B57\uFF0C0=\u9876\u683C\uFF09\u3002\u843D\u6B3E\u4F4D\u7F6E = \u5BF9\u9F50\u65B9\u5F0F + \u5DE6/\u53F3\u7A7A\u5B57\u6570\u5171\u540C\u51B3\u5B9A\uFF0C\u9884\u89C8\u4E0E docx \u5BFC\u51FA\u540C\u6B65\u751F\u6548\u3002"
-    ).addDropdown(
-      (dd) => dd.addOption("right", "\u53F3\u5BF9\u9F50\uFF08GB/T\uFF0C\u53F3\u7A7AN\u5B57\uFF09").addOption("center", "\u6C34\u5E73\u5C45\u4E2D").addOption("left", "\u5DE6\u5BF9\u9F50\uFF08\u5DE6\u7A7AN\u5B57\uFF09").setValue(this.plugin.settings.signatureAlign).onChange(async (v) => {
-        this.plugin.settings.signatureAlign = v;
-        await this.plugin.saveSettings();
-        applyDisabled(v);
-        this.plugin.refreshPreviewViews();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("\u843D\u6B3E\u53F3\u7A7A\uFF08\u5B57\uFF09").setDesc("\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u8DDD\u79BB\uFF08\u53F3\u5BF9\u9F50\u6A21\u5F0F\u751F\u6548\uFF09\u3002GB/T 9704 \u89C4\u5B9A 4 \u5B57\uFF08\u9ED8\u8BA4\uFF09\uFF1B\u5B9E\u52A1\u5E38\u7528 2 \u5B57\u66F4\u8D34\u53F3\uFF1B0=\u7D27\u8D34\u53F3\u8FB9\u8DDD\u3002").addText((tx) => {
-      tx.setValue(String(this.plugin.settings.signatureRightChars));
-      tx.inputEl.type = "number";
-      tx.inputEl.min = "0";
-      tx.inputEl.max = "12";
-      tx.inputEl.step = "1";
-      tx.inputEl.style.width = "5em";
-      rightInput = tx.inputEl;
-      tx.onChange(async (v) => {
-        const n = parseInt(v, 10);
-        if (!isFinite(n) || n < 0 || n > 12) return;
-        this.plugin.settings.signatureRightChars = n;
-        await this.plugin.saveSettings();
-        this.plugin.refreshPreviewViews();
-      });
-    });
-    new import_obsidian.Setting(containerEl).setName("\u843D\u6B3E\u5DE6\u7A7A\uFF08\u5B57\uFF09").setDesc("\u7F72\u540D\u4E0E\u6210\u6587\u65E5\u671F\u76F8\u5BF9\u5DE6\u7248\u5FC3\u8D77\u6392\u7684\u5DE6\u7A7A\uFF08\u5DE6\u5BF9\u9F50\u6A21\u5F0F\u751F\u6548\uFF1B0=\u9876\u683C\u5DE6\u5BF9\u9F50\uFF09\u3002").addText((tx) => {
-      tx.setValue(String(this.plugin.settings.signatureLeftChars));
-      tx.inputEl.type = "number";
-      tx.inputEl.min = "0";
-      tx.inputEl.max = "12";
-      tx.inputEl.step = "1";
-      tx.inputEl.style.width = "5em";
-      leftInput = tx.inputEl;
-      tx.onChange(async (v) => {
-        const n = parseInt(v, 10);
-        if (!isFinite(n) || n < 0 || n > 12) return;
-        this.plugin.settings.signatureLeftChars = n;
-        await this.plugin.saveSettings();
-        this.plugin.refreshPreviewViews();
-      });
-    });
-    applyDisabled(this.plugin.settings.signatureAlign);
-    new import_obsidian.Setting(containerEl).setName("\u7ED3\u6784\u5C42\u4F4D\u7F6E").setHeading();
-    const charsSetting = (name, desc, get, set) => new import_obsidian.Setting(containerEl).setName(name).setDesc(desc).addText((tx) => {
-      tx.setValue(String(get()));
-      tx.inputEl.type = "number";
-      tx.inputEl.min = "0";
-      tx.inputEl.max = "12";
-      tx.inputEl.step = "1";
-      tx.inputEl.style.width = "5em";
-      tx.onChange(async (v) => {
-        const n = parseInt(v, 10);
-        if (!isFinite(n) || n < 0 || n > 12) return;
-        set(n);
-        await this.plugin.saveSettings();
-        this.plugin.refreshPreviewViews();
-      });
-    });
-    const s = this.plugin.settings;
-    charsSetting(
-      "\u9644\u6CE8\u5DE6\u7A7A\uFF08\u5B57\uFF09",
-      "rh-notes \u9644\u6CE8\u884C\uFF08\u8054\u7CFB\u4EBA\u7B49\u5706\u62EC\u53F7\u6CE8\uFF09\u76F8\u5BF9\u5DE6\u7248\u5FC3\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 2\uFF08GB/T 9704\uFF09\u3002",
-      () => s.notesIndentChars,
-      (n) => s.notesIndentChars = n
-    );
-    charsSetting(
-      "\u9644\u4EF6\u8BF4\u660E\u5DE6\u7A7A\uFF08\u5B57\uFF09",
-      "rh-attachments \u9644\u4EF6\u8BF4\u660E\u884C\u76F8\u5BF9\u5DE6\u7248\u5FC3\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 2\uFF08GB/T 9704\uFF09\u3002",
-      () => s.attachIndentChars,
-      (n) => s.attachIndentChars = n
-    );
-    charsSetting(
-      "\u7248\u8BB0\u6284\u9001/\u5370\u53D1\u673A\u5173\u5DE6\u7A7A\uFF08\u5B57\uFF09",
-      "rh-cc \u6284\u9001\u884C\u4E0E rh-printOrg \u5370\u53D1\u673A\u5173\u884C\u7684\u5DE6\u7A7A\uFF0C\u9ED8\u8BA4 1\uFF08GB/T 9704\uFF0C\u6B63\u6587\u56DB\u53F7\u5B57\u5BBD\u8BA1\uFF09\u3002",
-      () => s.colophonLeftChars,
-      (n) => s.colophonLeftChars = n
-    );
-    charsSetting(
-      "\u7248\u8BB0\u5370\u53D1\u65E5\u671F\u53F3\u7A7A\uFF08\u5B57\uFF09",
-      "rh-printDate \u5370\u53D1\u65E5\u671F\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u53F3\u7A7A\uFF0C\u9ED8\u8BA4 1\uFF08GB/T 9704\uFF09\u3002",
-      () => s.printRightChars,
-      (n) => s.printRightChars = n
-    );
-    charsSetting(
-      "\u7248\u8BB0\u5370\u53D1\u4EFD\u6570\u53F3\u7A7A\uFF08\u5B57\uFF09",
-      "rh-printCopies \u5370\u53D1\u4EFD\u6570\u76F8\u5BF9\u53F3\u7248\u5FC3\u7684\u53F3\u7A7A\uFF0C\u9ED8\u8BA4 3\uFF08GB/T 9704\uFF09\u3002",
-      () => s.copiesRightChars,
-      (n) => s.copiesRightChars = n
-    );
-    new import_obsidian.Setting(containerEl).setName("\u9884\u8BBE\u7BA1\u7406").setHeading();
-    for (const p of this.plugin.allPresets()) this.presetRow(containerEl, p);
-    new import_obsidian.Setting(containerEl).addButton(
-      (btn) => btn.setButtonText("\uFF0B \u65B0\u5EFA\u9884\u8BBE\uFF08\u590D\u5236\u5F53\u524D\u6D3B\u52A8\u9884\u8BBE\uFF09").onClick(async () => {
-        const src = this.plugin.activePreset();
-        const preset = clonePreset(src, { id: `custom-${Date.now()}`, name: `${src.name} \u526F\u672C`, builtin: false });
-        this.plugin.settings.customPresets.push(preset);
-        this.plugin.settings.activePresetId = preset.id;
-        await this.plugin.saveSettings();
-        this.editingId = preset.id;
-        this.display();
-        this.plugin.refreshPreviewViews();
-      })
-    );
-    this.renderWriteSection(containerEl);
-    new import_obsidian.Setting(containerEl).setName("\u516C\u6587\u6A21\u677F").setHeading();
-    const seq = ++this.renderSeq;
-    void this.renderTemplateSection(containerEl, seq);
-    this.renderBackupSection(containerEl);
-    if (this.editingId) {
-      const target = this.plugin.allPresets().find((p) => p.id === this.editingId);
-      if (target) this.presetEditor(containerEl, target);
-      else this.editingId = null;
-    }
-  }
-  /** 一行预设：名称 + 操作按钮（内置：编辑/重置/复制；自定义：编辑/删除/复制） */
-  presetRow(containerEl, p) {
-    const overridden = p.builtin && !!this.plugin.builtinOverrideFor(p.id);
-    const tag2 = p.builtin ? overridden ? "\uFF08\u5185\u7F6E \xB7 \u5DF2\u4FEE\u6539\uFF09" : "\uFF08\u5185\u7F6E\uFF09" : "";
-    const active = p.id === this.plugin.settings.activePresetId ? " \xB7 \u5F53\u524D\u4F7F\u7528" : "";
-    const s = new import_obsidian.Setting(containerEl).setName(`${p.name}${tag2}${active}`);
-    s.addExtraButton(
-      (b) => b.setIcon("pencil").setTooltip("\u7F16\u8F91").onClick(() => {
-        this.editingId = p.id;
-        this.display();
-      })
-    );
-    if (p.builtin) {
-      s.addExtraButton(
-        (b) => b.setIcon("rotate-ccw").setTooltip("\u91CD\u7F6E\u4E3A\u51FA\u5382\u9ED8\u8BA4").onClick(async () => {
-          await this.plugin.resetBuiltinPreset(p.id);
-          if (this.editingId === p.id) this.editingId = null;
-          this.display();
-          new import_obsidian.Notice(`RedQuill\uFF1A${p.name} \u5DF2\u91CD\u7F6E\u4E3A\u51FA\u5382\u9ED8\u8BA4\u3002`);
-        })
-      );
-    } else {
-      s.addExtraButton(
-        (b) => b.setIcon("trash").setTooltip("\u5220\u9664").onClick(async () => {
-          this.plugin.settings.customPresets = this.plugin.settings.customPresets.filter((x) => x.id !== p.id);
-          if (this.plugin.settings.activePresetId === p.id) {
-            this.plugin.settings.activePresetId = BUILTIN_PRESETS[0].id;
-          }
-          if (this.editingId === p.id) this.editingId = null;
-          await this.plugin.saveSettings();
-          this.display();
-          this.plugin.refreshPreviewViews();
-        })
-      );
-    }
-    s.addExtraButton(
-      (b) => b.setIcon("copy").setTooltip("\u590D\u5236\u4E3A\u65B0\u9884\u8BBE").onClick(async () => {
-        const preset = clonePreset(p, { id: `custom-${Date.now()}`, name: `${p.name} \u526F\u672C`, builtin: false });
-        this.plugin.settings.customPresets.push(preset);
-        this.plugin.settings.activePresetId = preset.id;
-        await this.plugin.saveSettings();
-        this.editingId = preset.id;
-        this.display();
-        this.plugin.refreshPreviewViews();
-      })
-    );
-  }
-  /**
-   * 预设编辑表单。内置预设编辑的是工作副本，每次改动写入覆盖层（出厂定义不动，
-   * 随时可在列表行一键重置）；自定义预设直接改本体。
-   */
-  presetEditor(containerEl, target) {
-    const isBuiltin = target.builtin;
-    const p = isBuiltin ? clonePreset(target, { id: target.id, name: target.name }) : target;
-    const box = containerEl.createEl("div", { cls: "redquill-preset-editor" });
-    box.createEl("h3", { text: `\u7F16\u8F91\uFF1A${p.name}${isBuiltin ? "\uFF08\u5185\u7F6E\uFF0C\u6539\u52A8\u5373\u4FDD\u5B58\uFF0C\u53EF\u91CD\u7F6E\u4E3A\u51FA\u5382\uFF09" : ""}` });
-    const save = () => isBuiltin ? this.plugin.saveBuiltinOverride(p) : this.plugin.saveCustomPreset(p);
-    const num = (label, desc, get, set, unit = "") => {
-      new import_obsidian.Setting(box).setName(label).setDesc(desc).addText((tx) => {
-        tx.setValue(String(get()));
-        tx.inputEl.type = "number";
-        tx.onChange((v) => {
-          const n = parseFloat(v);
-          if (isFinite(n) && n > 0) {
-            set(n);
-            save();
-          }
-        });
-      });
-    };
-    new import_obsidian.Setting(box).setName("\u9884\u8BBE\u540D\u79F0").addText(
-      (tx) => tx.setValue(p.name).onChange((v) => {
-        p.name = v.trim() || p.name;
-        save();
-      })
-    );
-    box.createEl("h4", { text: "\u9875\u9762" });
-    num("\u4E0A\u8FB9\u8DDD (mm)", "", () => p.page.top, (v) => p.page.top = v);
-    num("\u4E0B\u8FB9\u8DDD (mm)", "", () => p.page.bottom, (v) => p.page.bottom = v);
-    num("\u5DE6\u8FB9\u8DDD (mm)", "", () => p.page.left, (v) => p.page.left = v);
-    num("\u53F3\u8FB9\u8DDD (mm)", "", () => p.page.right, (v) => p.page.right = v);
-    num("\u6B63\u6587\u884C\u8DDD (\u78C5)", "\u56FA\u5B9A\u503C\u884C\u8DDD", () => p.linePt, (v) => p.linePt = v);
-    num("\u5927\u6807\u9898\u884C\u8DDD (\u78C5)", "\u56FA\u5B9A\u503C\u884C\u8DDD", () => p.titleLinePt, (v) => p.titleLinePt = v);
-    new import_obsidian.Setting(box).setName("\u9875\u7801\u6837\u5F0F").setDesc("\u516C\u6587\u5F0F\u4E3A GB/T 9704 \u56FA\u5B9A\u6392\u6CD5\uFF08\u5355\u9875\u53F3 / \u53CC\u9875\u5DE6\uFF09\uFF0C\u5FFD\u7565\u4E0B\u65B9\u5BF9\u9F50\u8BBE\u7F6E\u3002").addDropdown((dd) => {
-      for (const o of PAGE_NUMBER_OPTIONS) dd.addOption(o.id, o.label);
-      dd.setValue(p.pageNumber.style).onChange(async (v) => {
-        p.pageNumber.style = v;
-        save();
-      });
-    });
-    new import_obsidian.Setting(box).setName("\u9875\u7801\u5BF9\u9F50").setDesc("\u975E\u516C\u6587\u5F0F\u9875\u7801\u7684\u5BF9\u9F50\u4F4D\u7F6E").addDropdown(
-      (dd) => dd.addOption("left", "\u5C45\u5DE6").addOption("center", "\u5C45\u4E2D").addOption("right", "\u5C45\u53F3").setValue(p.pageNumber.align).onChange(async (v) => {
-        p.pageNumber.align = v;
-        save();
-      })
-    );
-    num("\u9875\u7801\u5B57\u53F7 (pt)", "\u56FD\u6807\u4E3A\u56DB\u53F7 14pt", () => p.pageNumber.sizePt, (v) => p.pageNumber.sizePt = v);
-    box.createEl("h4", { text: "\u89D2\u8272\u6392\u7248" });
-    for (const key of ["docTitle", "h1", "h2", "h3", "body", "table"]) {
-      const st = p.roles[key];
-      box.createEl("h5", { text: ROLE_LABELS[key] });
-      new import_obsidian.Setting(box).setName("\u4E2D\u6587\u5B57\u4F53").setDesc("\u7559\u7A7A\u7528\u9ED8\u8BA4\u5B57\u94FE\uFF1B\u586B\u672C\u673A\u5DF2\u5B89\u88C5\u7684\u5B57\u4F53\u540D").addText(
-        (tx) => tx.setValue(st.font).setPlaceholder("\u9ED8\u8BA4").onChange((v) => {
-          st.font = v.trim();
-          save();
-        })
-      );
-      num("\u5B57\u53F7 (pt)", "", () => st.sizePt, (v) => st.sizePt = v);
-      new import_obsidian.Setting(box).setName("\u52A0\u7C97").addToggle(
-        (tg) => tg.setValue(st.bold).onChange(async (v) => {
-          st.bold = v;
-          save();
-        })
-      );
-      if (key !== "table") {
-        new import_obsidian.Setting(box).setName("\u5BF9\u9F50").addDropdown(
-          (dd) => dd.addOption("left", "\u5DE6\u5BF9\u9F50").addOption("center", "\u5C45\u4E2D").setValue(st.align).onChange(async (v) => {
-            st.align = v;
-            save();
-          })
-        );
-      }
-      if (key === "h3" || key === "body") {
-        num("\u9996\u884C\u7F29\u8FDB (\u5B57\u7B26)", "0 = \u4E0D\u7F29\u8FDB", () => st.indentChars, (v) => st.indentChars = Math.max(0, Math.floor(v)));
-      }
-    }
-    new import_obsidian.Setting(box).addButton(
-      (btn) => btn.setButtonText("\u6536\u8D77\u7F16\u8F91\u5668").onClick(() => {
-        this.editingId = null;
-        this.display();
-      })
-    );
-  }
-  /** v0.11.0 写作提效设置：默认发文机关（新建向导预填）+ 写作辅助面板入口 */
-  renderWriteSection(containerEl) {
-    containerEl.createEl("h3", { text: "\u5199\u4F5C" });
-    new import_obsidian.Setting(containerEl).setName("\u9ED8\u8BA4\u53D1\u6587\u673A\u5173\uFF08\u7EA2\u5934\uFF09").setDesc("\u300C\u65B0\u5EFA\u516C\u6587\u300D\u5411\u5BFC\u81EA\u52A8\u628A\u8BE5\u673A\u5173\u9884\u586B\u8FDB frontmatter \u7684 rh-agency\uFF1B\u8054\u5408\u884C\u6587\u7528 / \u5206\u9694\u591A\u673A\u5173\u3002\u7559\u7A7A = \u7528\u6A21\u677F\u5360\u4F4D\u300CXX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\u300D\u3002").addText(
-      (tx) => tx.setPlaceholder("XX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6").setValue(this.plugin.settings.defaultAgency).onChange(async (v) => {
-        this.plugin.settings.defaultAgency = v.trim().replace(/\s+/g, " ").slice(0, 80);
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("\u5199\u4F5C\u8F85\u52A9\u9762\u677F").setDesc("\u53F3\u4FA7\u680F\u8DDF\u968F\u5149\u6807\u8BCA\u65AD\u5F53\u524D\u884C\u7684\u516C\u6587\u89D2\u8272\uFF08\u6807\u9898\u5C42\u7EA7/\u6B63\u6587/\u8868\u683C\u2026\uFF09\uFF0C\u7ED9\u4E0B\u4E00\u7EA7\u6807\u9898\u5E8F\u53F7\u5EFA\u8BAE\u4E0E\u5FEB\u6377\u63D2\u5165\uFF1B\u4E5F\u53EF\u7528\u547D\u4EE4\u300C\u6253\u5F00\u5199\u4F5C\u8F85\u52A9\u9762\u677F\u300D\u3002").addButton((b) => b.setButtonText("\u6253\u5F00").onClick(() => this.plugin.openWriteAssistBtn()));
-  }
-  /** v0.8.0 备份与同步：导出全部设置 / 导入（备份列表 + 粘贴 JSON） */
-  renderBackupSection(containerEl) {
-    containerEl.createEl("h3", { text: "\u5907\u4EFD\u4E0E\u540C\u6B65" });
-    containerEl.createEl("p", {
-      text: "\u53CC\u673A\u6216\u540C\u4E8B\u95F4\u540C\u6B65\u540C\u4E00\u5957\u7248\u5F0F\uFF1A\u5BFC\u51FA\u540E\u5728\u53E6\u4E00\u53F0\u5BFC\u5165\u5373\u53EF\uFF08\u5907\u4EFD\u6587\u4EF6\u653E vault \u6839\u76EE\u5F55\uFF0C\u968F\u5E93\u540C\u6B65\uFF09\u3002",
-      cls: "setting-item-description"
-    });
-    new import_obsidian.Setting(containerEl).setName("\u5BFC\u51FA\u5168\u90E8\u8BBE\u7F6E").setDesc("\u81EA\u5B9A\u4E49\u9884\u8BBE + \u7248\u5F0F\u53C2\u6570\uFF08\u843D\u6B3E\u5BF9\u9F50\u3001\u7ED3\u6784\u5C42\u4F4D\u7F6E\u3001\u7248\u8BB0\u5206\u9875\u3001\u9996\u53E5\u6807\u7C97\u7B49\uFF09\u6253\u5305\u4E3A JSON\u3002").addButton((b) => b.setButtonText("\u5BFC\u51FA JSON").setCta().onClick(() => void this.plugin.exportSettingsJson()));
-    new import_obsidian.Setting(containerEl).setName("\u5BFC\u5165\u8BBE\u7F6E").setDesc("\u4ECE\u672C\u5E93 redquill-settings-*.json \u5907\u4EFD\u6062\u590D\uFF0C\u6216\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 JSON\u3002\u5BFC\u5165\u81EA\u52A8\u6821\u9A8C\uFF0C\u975E\u6CD5\u9879\u56DE\u9ED8\u8BA4\u3002").addButton((b) => b.setButtonText("\u5BFC\u5165\u2026").onClick(() => new SettingsBackupModal(this.plugin).open()));
-  }
-  /** 公文模板清单：按行文方向三组折叠（对上/平级/对下），勾选 + 单独安装 + 批量 */
-  async renderTemplateSection(containerEl, seq) {
-    const adapter = this.plugin.app.vault.adapter;
-    let folder;
-    try {
-      folder = await this.plugin.templateFolder();
-    } catch {
-      return;
-    }
-    if (seq !== this.renderSeq) return;
-    const box = containerEl.createEl("div", { cls: "redquill-template-list" });
-    const tpHint = this.plugin.isTemplaterInstalled() ? "\u68C0\u6D4B\u5230 Templater\uFF1A\u5B89\u88C5\u65F6\u540C\u65F6\u5199\u5165\u300C(\u5F39\u7A97)\u300D\u7248\u3002" : "\u672A\u68C0\u6D4B\u5230 Templater\uFF1A\u53EA\u5B89\u88C5\u666E\u901A\u7248\uFF08\u88C5 Templater \u540E\u91CD\u88C5\u53EF\u8865\u5F39\u7A97\u7248\uFF09\u3002";
-    new import_obsidian.Setting(box).setName("\u6279\u91CF\u5B89\u88C5").setDesc(`\u5199\u5165\u300C${folder}\u300D\uFF08\u5DF2\u5B58\u5728\u7684\u4E0D\u8986\u76D6\uFF09\u3002\u63D2\u5165\u7528 Obsidian\u300C\u63D2\u5165\u6A21\u677F\u300D\u6216 Templater\u3002${tpHint}`).addButton(
-      (btn) => btn.setButtonText("\u5B89\u88C5\u6240\u9009").onClick(async () => {
-        const keys = this.plugin.settings.templateSelection.filter((k) => GONGWEN_TEMPLATES[k]);
-        if (!keys.length) {
-          new import_obsidian.Notice("RedQuill\uFF1A\u5148\u52FE\u9009\u8981\u5B89\u88C5\u7684\u6587\u79CD\u3002");
-          return;
-        }
-        const r = await this.plugin.installTemplates(keys);
-        new import_obsidian.Notice(installResultText(r), 6e3);
-        this.display();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("\u5168\u90E8\u5B89\u88C5").onClick(async () => {
-        const r = await this.plugin.installTemplates(Object.keys(GONGWEN_TEMPLATES));
-        new import_obsidian.Notice(installResultText(r), 6e3);
-        this.display();
-      })
-    );
-    for (const group of TEMPLATE_GROUPS) {
-      const details = box.createEl("details", { cls: "redquill-tgroup" });
-      const selCount = group.keys.filter((k) => this.plugin.settings.templateSelection.includes(k)).length;
-      details.createEl("summary", {
-        text: `${group.label}\uFF08${group.keys.length} \u4E2A\u6587\u79CD\uFF0C\u5DF2\u9009 ${selCount}\uFF09`
-      });
-      for (const key of group.keys) {
-        const meta = TEMPLATE_META[key] ?? { label: key, desc: "" };
-        let installed = false;
-        let installedTp = false;
-        try {
-          installed = await adapter.exists(`${folder}/${key}.md`);
-          installedTp = await adapter.exists(`${folder}/${key}(\u5F39\u7A97).md`);
-        } catch {
-        }
-        if (seq !== this.renderSeq) return;
-        const status = installed || installedTp ? " \xB7 \u5DF2\u5B89\u88C5" : "";
-        const tag2 = installed && installedTp ? "\uFF08\u542B\u5F39\u7A97\u7248\uFF09" : installedTp ? "\uFF08\u4EC5\u5F39\u7A97\u7248\uFF09" : "";
-        const selected = this.plugin.settings.templateSelection.includes(key);
-        new import_obsidian.Setting(details).setName(`${meta.label}${status}${tag2}`).setDesc(meta.desc).addToggle(
-          (tg) => tg.setValue(selected).onChange(async (v) => {
-            const cur = new Set(this.plugin.settings.templateSelection);
-            if (v) cur.add(key);
-            else cur.delete(key);
-            this.plugin.settings.templateSelection = [...cur];
-            await this.plugin.saveSettings();
-          })
-        ).addExtraButton(
-          (b) => b.setIcon("download").setTooltip("\u5B89\u88C5\u6B64\u6A21\u677F").onClick(async () => {
-            const r = await this.plugin.installTemplates([key]);
-            new import_obsidian.Notice(
-              r.created || r.tpCreated ? `RedQuill\uFF1A\u5DF2\u5B89\u88C5\u300C${meta.label}\u300D${r.tpCreated ? "\uFF08\u542B\u5F39\u7A97\u7248\uFF09" : ""}\u3002` : `RedQuill\uFF1A\u300C${meta.label}\u300D\u5DF2\u5B58\u5728\uFF0C\u672A\u8986\u76D6\u3002`
-            );
-            this.display();
-          })
-        );
-      }
-    }
-  }
-};
-var FM_FORM_FIELDS = [
-  { label: "\u673A\u5173\u6807\u5FD7\u6587\u5B57\uFF08\u7EA2\u5934\u5927\u5B57\uFF09", key: "rh-agency", group: "\u7248\u5934", placeholder: "XX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\uFF1B\u8054\u5408\u884C\u6587\u7528 / \u5206\u9694\u591A\u673A\u5173" },
-  { label: "\u673A\u5173\u6807\u5FD7\u56FE\u7247\uFF08vault \u8DEF\u5F84\uFF0Cpng/jpg\uFF09", key: "rh-logo", group: "\u7248\u5934", placeholder: "_assets/logo.png" },
-  { label: "\u53D1\u6587\u5B57\u53F7", key: "rh-docNumber", group: "\u7248\u5934", placeholder: "X\u653F\u53D1\u30142026\u301512\u53F7" },
-  { label: "\u7B7E\u53D1\u4EBA\uFF08\u4E0A\u884C\u6587\u624D\u586B\uFF09", key: "rh-signer", group: "\u7248\u5934", placeholder: "\u5F20\u4E09" },
-  { label: "\u4EFD\u53F7\uFF086 \u4F4D\u6570\u5B57\uFF09", key: "rh-copyNumber", group: "\u7248\u5934", placeholder: "000001" },
-  { label: "\u5BC6\u7EA7\u548C\u4FDD\u5BC6\u671F\u9650", key: "rh-secretLevel", group: "\u7248\u5934", placeholder: "\u673A\u5BC6\u26051\u5E74" },
-  { label: "\u7D27\u6025\u7A0B\u5EA6", key: "rh-urgency", group: "\u7248\u5934", placeholder: "\u7279\u6025" },
-  { label: "\u4E3B\u9001\u673A\u5173\uFF08\u591A\u4E2A\u7528\u987F\u53F7\u5206\u9694\uFF09", key: "rh-recipients", group: "\u4E3B\u4F53", placeholder: "\u5404\u90E8\u95E8\u3001\u5404\u79D1\u5BA4", wide: true },
-  { label: "\u7F72\u540D\uFF08\u53D1\u6587\u673A\u5173\u540D\uFF09", key: "rh-signature", group: "\u4E3B\u4F53", placeholder: "XX\u9547\u4EBA\u6C11\u653F\u5E9C" },
-  { label: "\u6210\u6587\u65E5\u671F", key: "rh-date", group: "\u4E3B\u4F53", placeholder: "2026\u5E749\u67082\u65E5" },
-  { label: "\u5370\u7AE0\u56FE\uFF08vault \u8DEF\u5F84\uFF0C\u6D6E\u76D6\u5728\u6210\u6587\u65E5\u671F\u4E0A\uFF09", key: "rh-seal", group: "\u4E3B\u4F53", placeholder: "_assets/seal.png" },
-  { label: "\u9644\u4EF6\u8BF4\u660E\uFF08\u591A\u4E2A\u7528 / \u5206\u9694\uFF09", key: "rh-attachments", group: "\u4E3B\u4F53", placeholder: "\u4F1A\u8BAE\u8BAE\u7A0B/\u53C2\u4F1A\u540D\u5355", wide: true },
-  { label: "\u9644\u6CE8\uFF08\u8054\u7CFB\u4EBA\u7B49\uFF0C\u81EA\u52A8\u52A0\u5706\u62EC\u53F7\uFF09", key: "rh-notes", group: "\u4E3B\u4F53", placeholder: "\u8054\u7CFB\u4EBA\uFF1A\u5F20\u4E09", wide: true },
-  { label: "\u6284\u9001\u673A\u5173", key: "rh-cc", group: "\u7248\u8BB0", placeholder: "\u53BF\u519C\u4E1A\u519C\u6751\u5C40\u3001\u53BF\u8D22\u653F\u5C40" },
-  { label: "\u5370\u53D1\u673A\u5173", key: "rh-printOrg", group: "\u7248\u8BB0", placeholder: "XX\u9547\u515A\u653F\u529E\u516C\u5BA4" },
-  { label: "\u5370\u53D1\u65F6\u95F4", key: "rh-printDate", group: "\u7248\u8BB0", placeholder: "2026\u5E749\u67082\u65E5" },
-  { label: "\u5370\u53D1\u4EFD\u6570", key: "rh-printCopies", group: "\u7248\u8BB0", placeholder: "20" }
-];
-function fmQuote(v) {
-  return /[:#[\]{}&*!|>'"%@`]/.test(v) || /^\s|\s$/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
-}
-function applyFrontmatter(src, entries) {
-  const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) {
-    const fm = ["---", ...entries.map(([k, v]) => `${k}: ${fmQuote(v)}`), "---", ""].join("\n");
-    return fm + src;
-  }
-  let fmText = m[1];
-  for (const [k, v] of entries) {
-    const re = new RegExp(`^(${k}\\s*:\\s*)(.*)$`, "m");
-    if (re.test(fmText)) fmText = fmText.replace(re, (_s, pre) => `${pre}${fmQuote(v)}`);
-    else fmText += `
-${k}: ${fmQuote(v)}`;
-  }
-  const rest = src.slice(m[0].length);
-  return `---
-${fmText}
----
-${rest.startsWith("\n") || rest === "" ? rest : "\n" + rest}`;
-}
-var NewGongwenWizard = class extends import_obsidian.FuzzySuggestModal {
-  constructor(plugin) {
-    super(plugin.app);
-    this.plugin = plugin;
-    this.setPlaceholder("\u8F93\u5165\u6587\u79CD\u540D\u7B5B\u9009\uFF1A\u901A\u77E5 / \u8BF7\u793A / \u62A5\u544A / \u7EAA\u8981 \u2026");
-  }
-  getItems() {
-    return NEW_DOC_ITEMS;
-  }
-  getItemText(it) {
-    return `${it.label}\uFF08${it.group}\uFF09\u2014 ${it.desc}`;
-  }
-  onChooseItem(it) {
-    new NewGongwenDraftModal(this.plugin, it).open();
-  }
-};
-var NewGongwenDraftModal = class extends import_obsidian.Modal {
-  constructor(plugin, item) {
-    super(plugin.app);
-    this.plugin = plugin;
-    this.item = item;
-    this.titleEl.setText(`\u65B0\u5EFA\u516C\u6587 \xB7 ${item.label}`);
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h3", { text: `\u65B0\u5EFA\u516C\u6587\uFF1A${this.item.label}` });
-    const agency = this.plugin.settings.defaultAgency;
-    contentEl.createEl("p", {
-      text: `${this.item.desc}\u3002\u53D1\u6587\u673A\u5173\uFF1A${agency ? `\u300C${agency}\u300D` : "\u6A21\u677F\u5360\u4F4D\u300CXX\u9547\u4EBA\u6C11\u653F\u5E9C\u6587\u4EF6\u300D"}\uFF1B\u6A21\u677F\u4E2D\u5199\u6B7B\u7684\u5E74\u4EFD\u81EA\u52A8\u66FF\u6362\u4E3A\u4ECA\u5E74\u3002\u6587\u4EF6\u5EFA\u5728\u5F53\u524D\u7B14\u8BB0\u6240\u5728\u6587\u4EF6\u5939\u3002`,
-      cls: "setting-item-description"
-    });
-    const input = contentEl.createEl("input", {
-      type: "text",
-      cls: "redquill-wizard-input",
-      placeholder: "\u516C\u6587\u6807\u9898\uFF08\u53EF\u7559\u7A7A\u7528\u6A21\u677F\u5360\u4F4D\uFF0C\u5982\uFF1A\u5173\u4E8E\u5F00\u5C55\u79CB\u5B63\u4EBA\u5C45\u73AF\u5883\u6574\u6CBB\u7684\u901A\u77E5\uFF09"
-    });
-    input.style.width = "100%";
-    input.focus();
-    new import_obsidian.Setting(contentEl).addButton(
-      (b) => b.setButtonText("\u521B\u5EFA\u5E76\u6253\u5F00").setCta().onClick(async () => {
-        const title = input.value.trim();
-        try {
-          await this.plugin.createGongwenDoc(this.item, title);
-        } catch (e) {
-          new import_obsidian.Notice(`RedQuill\uFF1A\u521B\u5EFA\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
-          return;
-        }
-        new import_obsidian.Notice("RedQuill\uFF1A\u516C\u6587\u5DF2\u521B\u5EFA\uFF0C\u5F00\u59CB\u5199\u4F5C\uFF08\u5199\u8F85\u52A9\u53EF\u63D0\u793A\u6807\u9898\u5C42\u7EA7\uFF09\u3002");
-        this.close();
-      })
-    );
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") {
-        contentEl.querySelector("button.mod-cta")?.click();
-      }
-    });
-  }
-};
-var GongwenFormModal = class extends import_obsidian.Modal {
-  constructor(plugin, initial) {
-    super(plugin.app);
-    this.plugin = plugin;
-    this.initial = initial;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h3", { text: "\u586B\u5199\u516C\u6587\u5C5E\u6027" });
-    contentEl.createEl("p", {
-      text: "\u4E2D\u6587\u586B\u5199\uFF0C\u4FDD\u5B58\u540E\u4EE5 rh-* \u82F1\u6587\u5C5E\u6027\u5199\u5165\u7B14\u8BB0 frontmatter\u3002\u7559\u7A7A = \u4E0D\u6E32\u67D3\u8BE5\u8981\u7D20\u3002",
-      cls: "setting-item-description"
-    });
-    const values = {};
-    const inputs = {};
-    let lastGroup = "";
-    for (const f of FM_FORM_FIELDS) {
-      if (f.group !== lastGroup) {
-        lastGroup = f.group;
-        contentEl.createEl("h4", { text: f.group });
-      }
-      const metaKey = f.key.slice(3);
-      new import_obsidian.Setting(contentEl).setName(f.label).setClass(f.wide ? "redquill-form-wide" : "redquill-form").addText((t) => {
-        t.setPlaceholder(f.placeholder ?? "").setValue(this.initial[metaKey] ?? "");
-        inputs[f.key] = t.inputEl;
-        t.inputEl.style.width = "100%";
-      });
-      values[f.key] = "";
-      inputs[f.key].addEventListener("input", () => values[f.key] = inputs[f.key].value);
-    }
-    new import_obsidian.Setting(contentEl).addButton(
-      (b) => b.setButtonText("\u5199\u5165 frontmatter").setCta().onClick(() => {
-        const entries = FM_FORM_FIELDS.map(({ key }) => [key, values[key].trim()]).filter(
-          ([, v]) => v !== ""
-        );
-        const warn = validateDocNumber(values["rh-docNumber"]);
-        if (warn) new import_obsidian.Notice(`RedQuill\uFF1A${warn}`, 8e3);
-        const mv = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-        if (!mv?.file) {
-          new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
-          return;
-        }
-        mv.editor.setValue(applyFrontmatter(mv.editor.getValue(), entries));
-        new import_obsidian.Notice("RedQuill\uFF1A\u516C\u6587\u5C5E\u6027\u5DF2\u5199\u5165 frontmatter\u3002");
-        this.close();
-      })
-    ).addButton((b) => b.setButtonText("\u53D6\u6D88").onClick(() => this.close()));
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
-var CheckReportModal = class extends import_obsidian.Modal {
-  constructor(plugin, file, issues) {
-    super(plugin.app);
-    this.plugin = plugin;
-    this.file = file;
-    this.issues = issues;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    const errs = this.issues.filter((i) => i.level === "error").length;
-    const warns = this.issues.length - errs;
-    contentEl.createEl("h3", {
-      text: this.issues.length ? `\u6392\u7248\u4F53\u68C0\uFF1A${errs} \u5904\u9700\u5904\u7406\uFF0C${warns} \u5904\u5EFA\u8BAE` : "\u6392\u7248\u4F53\u68C0\uFF1A\u901A\u8FC7"
-    });
-    contentEl.createEl("p", {
-      text: "\u673A\u5668\u81EA\u67E5\u4EC5\u63D0\u793A\u3001\u4E0D\u4FEE\u6539\u3001\u4E0D\u963B\u585E\u5BFC\u51FA\u3002\u70B9\u51FB\u300C\u7B2C N \u884C\u300D\u8DF3\u5230\u5BF9\u5E94\u4F4D\u7F6E\uFF08\u4F1A\u81EA\u52A8\u5207\u5230\u6E90\u7801\u6A21\u5F0F\uFF09\u3002",
-      cls: "setting-item-description"
-    });
-    if (!this.issues.length) {
-      contentEl.createEl("p", { text: "\u672A\u53D1\u73B0\u95EE\u9898\uFF0C\u53EF\u76F4\u63A5\u5BFC\u51FA\u3002", cls: "setting-item-description" });
-      return;
-    }
-    const list2 = contentEl.createEl("div", { cls: "redquill-check-list" });
-    for (const it of this.issues) {
-      const row = list2.createEl("div", { cls: `redquill-check-item ${it.level}` });
-      row.createEl("span", { cls: "redquill-check-badge", text: it.level === "error" ? "\u9700\u5904\u7406" : "\u5EFA\u8BAE" });
-      row.createEl("span", { cls: "redquill-check-msg", text: it.message });
-      if (it.line !== void 0) {
-        const ln = row.createEl("span", { cls: "redquill-check-line", text: `\u7B2C ${it.line} \u884C \u2197` });
-        ln.addEventListener("click", () => void this.jumpTo(it.line));
-      }
-    }
-  }
-  /** 跳到该文件源码模式第 line 行（1-based），并高亮当前行 */
-  async jumpTo(line) {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType("markdown").find((l) => l.view?.file === this.file);
-    if (!leaf) leaf = workspace.getLeaf(false);
-    await leaf.openFile(this.file, { active: true, state: { mode: "source" } });
-    const ed = leaf.view.editor;
-    if (ed) {
-      const l = Math.max(0, line - 1);
-      ed.setCursor({ line: l, ch: 0 });
-      ed.scrollIntoView({ from: { line: l, ch: 0 }, to: { line: l, ch: 0 } }, true);
-    }
-    this.close();
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
-var SettingsBackupModal = class extends import_obsidian.Modal {
-  constructor(plugin) {
-    super(plugin.app);
-    this.pasted = "";
-    this.plugin = plugin;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h3", { text: "\u5BFC\u5165 RedQuill \u8BBE\u7F6E" });
-    contentEl.createEl("p", {
-      text: "\u4ECE\u672C vault \u7684 redquill-settings-*.json \u5907\u4EFD\u6062\u590D\uFF0C\u6216\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 JSON\u3002\u5BFC\u5165\u524D\u4F1A\u505A\u7ED3\u6784\u4E0E\u53D6\u503C\u6821\u9A8C\uFF0C\u975E\u6CD5\u9879\u81EA\u52A8\u56DE\u9ED8\u8BA4\u3002",
-      cls: "setting-item-description"
-    });
-    const files = this.plugin.backupFiles();
-    if (files.length) {
-      contentEl.createEl("h4", { text: `\u672C\u5E93\u5907\u4EFD\uFF08${files.length}\uFF09` });
-      for (const f of files.slice(0, 8)) {
-        const when = new Date(f.stat.mtime).toLocaleString();
-        new import_obsidian.Setting(contentEl).setName(f.name).setDesc(`${when}\u3000\u81EA\u5B9A\u4E49\u9884\u8BBE ${(f.stat.size / 1024).toFixed(1)} KB`).addButton(
-          (b) => b.setButtonText("\u5BFC\u5165").onClick(async () => {
-            try {
-              const txt = await this.plugin.app.vault.read(f);
-              await this.plugin.importSettingsText(txt, f.name);
-              this.close();
-            } catch (e) {
-              new import_obsidian.Notice(`RedQuill\uFF1A\u5BFC\u5165\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
-            }
-          })
-        );
-      }
-    } else {
-      contentEl.createEl("p", { text: "\u672C\u5E93\u6682\u65E0 redquill-settings-*.json \u5907\u4EFD\u3002", cls: "setting-item-description" });
-    }
-    contentEl.createEl("h4", { text: "\u7C98\u8D34 JSON" });
-    const ta = contentEl.createEl("textarea", { cls: "redquill-import-json" });
-    ta.placeholder = "\u7C98\u8D34\u5176\u4ED6\u673A\u5668\u5BFC\u51FA\u7684 redquill-settings JSON \u5168\u6587\u2026";
-    ta.addEventListener("input", () => this.pasted = ta.value);
-    new import_obsidian.Setting(contentEl).addButton(
-      (b) => b.setButtonText("\u4ECE\u7C98\u8D34\u5185\u5BB9\u5BFC\u5165").setCta().onClick(async () => {
-        if (!this.pasted.trim()) {
-          new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5148\u7C98\u8D34 JSON \u5185\u5BB9\u3002");
-          return;
-        }
-        try {
-          await this.plugin.importSettingsText(this.pasted.trim(), "\u7C98\u8D34\u5185\u5BB9");
-          this.close();
-        } catch (e) {
-          new import_obsidian.Notice(`RedQuill\uFF1A\u5BFC\u5165\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
-        }
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
-var RedQuillPlugin = class extends import_obsidian.Plugin {
+var RedQuillPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { ...DEFAULT_SETTINGS, autoClean: false };
@@ -24822,7 +24848,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
         if (!html2 || !cleaned || cleaned === (text || "").trim()) return;
         evt.preventDefault();
         hit.editor.replaceSelection(cleaned);
-        new import_obsidian.Notice("RedQuill\uFF1A\u5DF2\u81EA\u52A8\u51C0\u5316\u7C98\u8D34\uFF08\u53BB\u683C\u5F0F\u3001\u538B\u7A7A\u884C\uFF09\u3002", 4e3);
+        new import_obsidian6.Notice("RedQuill\uFF1A\u5DF2\u81EA\u52A8\u51C0\u5316\u7C98\u8D34\uFF08\u53BB\u683C\u5F0F\u3001\u538B\u7A7A\u884C\uFF09\u3002", 4e3);
       },
       { capture: true }
     );
@@ -24902,7 +24928,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
       title: title.trim() || void 0,
       agency: this.settings.defaultAgency
     });
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     const dir = mv?.file?.parent?.path ?? "";
     const exists = async (pp) => {
       try {
@@ -24937,34 +24963,34 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     } catch {
     }
     if (!html2 && !text) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BFB\u4E0D\u5230\u526A\u8D34\u677F\u3002\u8BF7\u5148\u590D\u5236\u5185\u5BB9\uFF0C\u6216\u7C98\u8D34\u540E\u8FD0\u884C\u300C\u6E05\u6D17\u9009\u533A / \u5F53\u524D\u6BB5\u300D\u3002", 6e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BFB\u4E0D\u5230\u526A\u8D34\u677F\u3002\u8BF7\u5148\u590D\u5236\u5185\u5BB9\uFF0C\u6216\u7C98\u8D34\u540E\u8FD0\u884C\u300C\u6E05\u6D17\u9009\u533A / \u5F53\u524D\u6BB5\u300D\u3002", 6e3);
       return;
     }
     const cleaned = cleanPaste({ html: html2, text });
     if (!cleaned) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u526A\u8D34\u677F\u4E2D\u6CA1\u6709\u53EF\u7C98\u8D34\u7684\u6587\u5B57\u5185\u5BB9\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u526A\u8D34\u677F\u4E2D\u6CA1\u6709\u53EF\u7C98\u8D34\u7684\u6587\u5B57\u5185\u5BB9\u3002", 4e3);
       return;
     }
     editor.replaceSelection(cleaned);
-    new import_obsidian.Notice("RedQuill\uFF1A\u5DF2\u6E05\u6D17\u63D2\u5165\uFF08\u53BB\u884C\u9996\u5C3E\u7A7A\u683C\u3001\u538B\u7F29\u591A\u4F59\u7A7A\u884C\uFF09\u3002", 5e3);
+    new import_obsidian6.Notice("RedQuill\uFF1A\u5DF2\u6E05\u6D17\u63D2\u5165\uFF08\u53BB\u884C\u9996\u5C3E\u7A7A\u683C\u3001\u538B\u7F29\u591A\u4F59\u7A7A\u884C\uFF09\u3002", 5e3);
   }
   /** 清洗选区 / 当前段（不依赖剪贴板：把选中文本或光标所在行按公文规则规整） */
   cleanSelection(editor) {
     const sel = editor.getSelection();
     if (sel.trim()) {
       editor.replaceSelection(cleanPaste({ text: sel }));
-      new import_obsidian.Notice("RedQuill\uFF1A\u9009\u533A\u5DF2\u6E05\u6D17\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u9009\u533A\u5DF2\u6E05\u6D17\u3002", 4e3);
       return;
     }
     const cursor = editor.getCursor();
     const line = editor.getLine(cursor.line);
     const cleaned = cleanPaste({ text: line });
     if (cleaned === line) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u884C\u672C\u5C31\u5E72\u51C0\uFF08\u65E0\u884C\u9996\u5C3E\u7A7A\u683C/\u591A\u4F59\u7A7A\u884C\uFF09\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u884C\u672C\u5C31\u5E72\u51C0\uFF08\u65E0\u884C\u9996\u5C3E\u7A7A\u683C/\u591A\u4F59\u7A7A\u884C\uFF09\u3002", 4e3);
       return;
     }
     editor.replaceRange(cleaned, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
-    new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u884C\u5DF2\u6E05\u6D17\u3002", 4e3);
+    new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u884C\u5DF2\u6E05\u6D17\u3002", 4e3);
   }
   /* ------------------------------------------------------------------ */
   /* v1.1 编辑器手感命令实现（④⑤⑦）：纯函数 delta → CM6 dispatch 单事务      */
@@ -24978,14 +25004,14 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   selectBlock(editor) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
     const cur = cm.state.selection.main.head;
     const [s, e] = titleLineRangeAt(text, blockRangeAt(text, cur), cur);
     if (s >= e) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u5728\u7A7A\u884C\u4E0A\uFF0C\u65E0\u53EF\u9009\u4E2D\u5185\u5BB9\u3002", 3e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5149\u6807\u5728\u7A7A\u884C\u4E0A\uFF0C\u65E0\u53EF\u9009\u4E2D\u5185\u5BB9\u3002", 3e3);
       return;
     }
     cm.dispatch({ selection: import_state2.EditorSelection.single(s, e), scrollIntoView: true });
@@ -24994,13 +25020,13 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   selectWordSegment(editor) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
     const seg = wordSegmentAt(text, cm.state.selection.main.head);
     if (!seg) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u4E0D\u5728\u8BCD\u6BB5\u4E0A\uFF08\u7A7A\u767D/\u6807\u70B9\u533A\uFF09\u3002", 3e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5149\u6807\u4E0D\u5728\u8BCD\u6BB5\u4E0A\uFF08\u7A7A\u767D/\u6807\u70B9\u533A\uFF09\u3002", 3e3);
       return;
     }
     cm.dispatch({ selection: import_state2.EditorSelection.single(seg[0], seg[1]), scrollIntoView: true });
@@ -25009,7 +25035,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   quoteWrap(editor) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
@@ -25025,7 +25051,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   toggleInlineMark(editor, mark) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
@@ -25041,14 +25067,14 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   breakListAt(editor) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
     const cur = cm.state.selection.main.head;
     const d = breakList(text, cur);
     if (!d) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u9700\u5728\u5217\u8868\u9879\u884C\u5C3E\uFF08\u4E14\u884C\u5185\u65E0\u5F85\u7EED\u5185\u5BB9\uFF09\u624D\u80FD\u6253\u65AD\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5149\u6807\u9700\u5728\u5217\u8868\u9879\u884C\u5C3E\uFF08\u4E14\u884C\u5185\u65E0\u5F85\u7EED\u5185\u5BB9\uFF09\u624D\u80FD\u6253\u65AD\u3002", 4e3);
       return;
     }
     cm.dispatch({
@@ -25061,7 +25087,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   listToPlainAt(editor) {
     const cm = this.cmOf(editor);
     if (!cm) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
       return;
     }
     const text = cm.state.doc.toString();
@@ -25069,12 +25095,12 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     const s = from === to ? blockRangeAt(text, to)[0] : from;
     const e = from === to ? blockRangeAt(text, to)[1] : to;
     if (s >= e) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u53EF\u5904\u7406\u7684\u5217\u8868\u5185\u5BB9\u3002", 3e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u6CA1\u6709\u53EF\u5904\u7406\u7684\u5217\u8868\u5185\u5BB9\u3002", 3e3);
       return;
     }
     const out = listToPlain(text.slice(s, e));
     if (out === text.slice(s, e)) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u9009\u533A/\u5F53\u524D\u6BB5\u4E0D\u542B\u5217\u8868\u6807\u8BB0\uFF0C\u65E0\u9700\u8F6C\u6362\u3002", 3e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u9009\u533A/\u5F53\u524D\u6BB5\u4E0D\u542B\u5217\u8868\u6807\u8BB0\uFF0C\u65E0\u9700\u8F6C\u6362\u3002", 3e3);
       return;
     }
     cm.dispatch({
@@ -25116,7 +25142,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
    */
   async openPreview() {
     const { workspace } = this.app;
-    const mv = workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     const currentFile = mv?.file ?? null;
     const existing = workspace.getLeavesOfType(VIEW_TYPE_PREVIEW)[0];
     if (existing) {
@@ -25146,15 +25172,15 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     }
   }
   async exportActiveDocx() {
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mv?.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
       return;
     }
     const md = await this.app.vault.cachedRead(mv.file);
     const { meta, blocks, attach } = parseDocument(md);
     const warn = validateDocNumber(meta.docNumber);
-    if (warn) new import_obsidian.Notice(`RedQuill\uFF1A${warn}`, 8e3);
+    if (warn) new import_obsidian6.Notice(`RedQuill\uFF1A${warn}`, 8e3);
     const { logo, seal } = await this.resolveLogo(meta);
     const blob = await buildDocxBlob(blocks, this.activePreset(), {
       firstSentenceBold: this.settings.firstSentenceBold,
@@ -25167,23 +25193,23 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     });
     const path = mv.file.path.replace(/\.md$/i, ".docx");
     await this.app.vault.adapter.writeBinary(path, await blob.arrayBuffer());
-    new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${path}`);
+    new import_obsidian6.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${path}`);
   }
   /** 公文排版体检：读当前笔记 → 有错开报告弹窗，无错 Notice 通过（命令与预览按钮共用） */
   async openCheck(file) {
     const md = await this.app.vault.cachedRead(file);
     const issues = checkDocument(md);
     if (!issues.length) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u6392\u7248\u4F53\u68C0\u901A\u8FC7\uFF0C\u672A\u53D1\u73B0\u95EE\u9898\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u6392\u7248\u4F53\u68C0\u901A\u8FC7\uFF0C\u672A\u53D1\u73B0\u95EE\u9898\u3002", 4e3);
       return;
     }
     new CheckReportModal(this, file, issues).open();
   }
   /** 命令入口：体检当前打开的 md 笔记 */
   async runCheckOnActive() {
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mv?.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
       return;
     }
     await this.openCheck(mv.file);
@@ -25191,26 +25217,26 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   /* ---- 通用八条体检 / 修复 / 上下文切换（v1.0.0 合一注入） ---- */
   /** 通用八条体检：读当前笔记 → issues 弹 CheckReportModal（与公文体检共用弹窗） */
   runCheckTypoOnActive() {
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mv?.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
       return;
     }
     const issues = checkDocument2(mv.editor.getValue());
     if (!issues.length) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u901A\u7528\u516B\u6761\u4F53\u68C0\u901A\u8FC7\uFF0C\u672A\u53D1\u73B0\u95EE\u9898\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u901A\u7528\u516B\u6761\u4F53\u68C0\u901A\u8FC7\uFF0C\u672A\u53D1\u73B0\u95EE\u9898\u3002", 4e3);
       return;
     }
     new CheckReportModal(this, mv.file, issues).open();
   }
   /** 一键修复通用八条：只改有变动的行（replaceRange 逐行，保留 Ctrl+Z 撤销） */
   runFixTypo(editor) {
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mv) return;
     const text = editor.getValue();
     const fixed = fixAll(text);
     if (fixed === text) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u53EF\u81EA\u52A8\u4FEE\u590D\u7684\u95EE\u9898\uFF08\u53EA\u4FEE\u65E0\u6B67\u4E49\u9879\uFF09\u3002", 4e3);
+      new import_obsidian6.Notice("RedQuill\uFF1A\u6CA1\u6709\u53EF\u81EA\u52A8\u4FEE\u590D\u7684\u95EE\u9898\uFF08\u53EA\u4FEE\u65E0\u6B67\u4E49\u9879\uFF09\u3002", 4e3);
       return;
     }
     const oldLines = text.split("\n");
@@ -25223,14 +25249,14 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
         changed++;
       }
     }
-    new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u4FEE\u590D ${changed} \u884C\uFF08Ctrl+Z \u53EF\u9010\u884C\u64A4\u9500\uFF09\u3002`, 5e3);
+    new import_obsidian6.Notice(`RedQuill\uFF1A\u5DF2\u4FEE\u590D ${changed} \u884C\uFF08Ctrl+Z \u53EF\u9010\u884C\u64A4\u9500\uFF09\u3002`, 5e3);
   }
   /** 上下文三态循环：auto（frontmatter 自动判定）→ 强制公文 → 强制通用 → auto */
   cycleContext() {
     const next = this.contextGate.mode === "auto" ? "gongwen" : this.contextGate.mode === "gongwen" ? "generic" : "auto";
     this.contextGate.setMode(next);
     const label = next === "auto" ? "\u81EA\u52A8\u5224\u5B9A\uFF08\u6309 frontmatter \u662F\u5426\u542B\u516C\u6587\u6807\u8BB0\uFF09" : next === "gongwen" ? "\u5F3A\u5236\u516C\u6587" : "\u5F3A\u5236\u901A\u7528";
-    new import_obsidian.Notice(
+    new import_obsidian6.Notice(
       `RedQuill\uFF1A\u4E0A\u4E0B\u6587 \u2192 ${label}${next === "auto" ? "" : "\u3002\u518D\u6B21\u8FD0\u884C\u672C\u547D\u4EE4\u53EF\u5207\u56DE\u81EA\u52A8"}`,
       5e3
     );
@@ -25250,9 +25276,9 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     };
     try {
       await this.app.vault.create(name, JSON.stringify(payload, null, 2));
-      new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${name}\uFF08vault \u6839\u76EE\u5F55\uFF0C\u968F\u5E93\u540C\u6B65\u53EF\u6362\u673A\u5BFC\u5165\uFF09`, 6e3);
+      new import_obsidian6.Notice(`RedQuill\uFF1A\u5DF2\u5BFC\u51FA ${name}\uFF08vault \u6839\u76EE\u5F55\uFF0C\u968F\u5E93\u540C\u6B65\u53EF\u6362\u673A\u5BFC\u5165\uFF09`, 6e3);
     } catch (e) {
-      new import_obsidian.Notice(`RedQuill\uFF1A\u5BFC\u51FA\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
+      new import_obsidian6.Notice(`RedQuill\uFF1A\u5BFC\u51FA\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`, 6e3);
     }
   }
   /** vault 内 redquill-settings-*.json 备份文件（按修改时间倒序） */
@@ -25274,14 +25300,14 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     }
     await this.saveSettings();
     this.refreshPreviewViews();
-    new import_obsidian.Notice(`RedQuill\uFF1A\u5DF2\u4ECE ${fromName} \u5BFC\u5165\u8BBE\u7F6E\uFF08${merged.customPresets.length} \u4E2A\u81EA\u5B9A\u4E49\u9884\u8BBE\uFF09`, 6e3);
+    new import_obsidian6.Notice(`RedQuill\uFF1A\u5DF2\u4ECE ${fromName} \u5BFC\u5165\u8BBE\u7F6E\uFF08${merged.customPresets.length} \u4E2A\u81EA\u5B9A\u4E49\u9884\u8BBE\uFF09`, 6e3);
     return merged.customPresets.length;
   }
   /** 公文属性中文表单入口：预填当前笔记已有 rh-* 值 */
   async openFormModal() {
-    const mv = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const mv = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mv?.file) {
-      new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
+      new import_obsidian6.Notice("RedQuill\uFF1A\u5F53\u524D\u6CA1\u6709\u6253\u5F00\u7684 md \u7B14\u8BB0\u3002");
       return;
     }
     const md = await this.app.vault.cachedRead(mv.file);
@@ -25299,7 +25325,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
       if (!p) return false;
       try {
         if (!await this.app.vault.adapter.exists(p)) {
-          new import_obsidian.Notice(`RedQuill\uFF1Arh-${key} \u6307\u5411\u7684\u6587\u4EF6\u4E0D\u5B58\u5728\uFF1A${p}`);
+          new import_obsidian6.Notice(`RedQuill\uFF1Arh-${key} \u6307\u5411\u7684\u6587\u4EF6\u4E0D\u5B58\u5728\uFF1A${p}`);
           return false;
         }
         const ext = /\.(jpe?g)$/i.test(p) ? "jpg" : "png";
@@ -25313,7 +25339,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
         }
         return true;
       } catch (e) {
-        new import_obsidian.Notice(`RedQuill\uFF1Arh-${key} \u8BFB\u53D6\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`);
+        new import_obsidian6.Notice(`RedQuill\uFF1Arh-${key} \u8BFB\u53D6\u5931\u8D25\uFF1A${e instanceof Error ? e.message : String(e)}`);
         return false;
       }
     };
@@ -25377,15 +25403,17 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
   async installGongwenTemplates() {
     const r = await this.installTemplates(Object.keys(GONGWEN_TEMPLATES));
     const tpPart = r.tpCreated ? `\uFF1B\u5F39\u7A97\u7248 ${r.tpCreated} \u4E2A${r.tpSkipped ? `\u3001\u8DF3\u8FC7 ${r.tpSkipped} \u4E2A` : ""}` : "";
-    new import_obsidian.Notice(
+    new import_obsidian6.Notice(
       `RedQuill\uFF1A\u6A21\u677F\u6587\u4EF6\u5939\u300C${r.folder}\u300D\u65B0\u5EFA ${r.created} \u4E2A${r.skipped ? `\u3001\u8DF3\u8FC7\u5DF2\u5B58\u5728 ${r.skipped} \u4E2A` : ""}${tpPart}\u3002\u4F7F\u7528\uFF1A\u547D\u4EE4\u9762\u677F\u641C\u300C\u63D2\u5165\u6A21\u677F\u300D\uFF08\u6216 Templater\uFF09\u9009\u62E9\u516C\u6587\u6A21\u677F\u3002`,
       8e3
     );
   }
 };
+var main_default = RedQuillPlugin;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   GONGWEN_TEMPLATES,
+  RedQuillPlugin,
   VIEW_TYPE_PANEL,
   VIEW_TYPE_PREVIEW,
   VIEW_TYPE_WRITEASSIST,

@@ -5,14 +5,24 @@
   "main": "main.js",
   "type": "module",
   "scripts": {
-    "build:main": "esbuild src/main.ts --bundle --format=cjs --platform=node --external:obsidian --outfile=main.js",
+    "build:main": "esbuild src/main.ts --bundle --format=cjs --platform=node --external:obsidian --external:@codemirror/state --external:@codemirror/view --outfile=main.js",
     "build:cli": "esbuild src/cli.ts --bundle --format=esm --platform=node --outfile=dist/cli.js",
     "build": "tsc -noEmit && npm run build:main && npm run build:cli"
   },
-  "keywords": ["obsidian", "writing", "markdown", "chinese", "gongwen", "paste-clean", "lint"],
+  "keywords": [
+    "obsidian",
+    "writing",
+    "markdown",
+    "chinese",
+    "gongwen",
+    "paste-clean",
+    "lint"
+  ],
   "author": "ygnstudio",
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/state": "^6.7.2",
+    "@codemirror/view": "^6.43.11",
     "@types/node": "^22.0.0",
     "docx": "^9.0.0",
     "esbuild": "^0.24.0",

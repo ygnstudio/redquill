@@ -1,0 +1,9 @@
+{
+  "id": "mdquill",
+  "name": "MDQuill",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "md 写作体验：粘贴即纯净（网页/Word/WPS 格式清洗）、中文排版体检（半角标点/重复标点/中英空格/括号引号/叠字等，一键修复）、右侧栏写作仪表盘（字数/标题树/体检速览/快捷插入）",
+  "author": "ygnstudio",
+  "isDesktopOnly": false
+}

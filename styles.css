@@ -1,0 +1,165 @@
+/* MDQuill v0.1.0 —— 写作面板与体检报告样式 */
+
+/* ---- 写作面板（右侧栏） ---- */
+
+.mdquill-card {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+}
+
+.mdquill-card-title {
+  font-weight: 600;
+  font-size: 0.95em;
+  margin-bottom: 6px;
+}
+
+.mdquill-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mdquill-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.mdquill-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mdquill-btn {
+  padding: 3px 10px;
+  font-size: 0.85em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.mdquill-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.mdquill-tree {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mdquill-tree-item {
+  padding: 2px 6px;
+  font-size: 0.88em;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.mdquill-tree-item:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.mdquill-tree-item.active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  color: var(--text-accent);
+}
+
+.mdquill-tree-item.mdquill-h1 {
+  padding-left: 6px;
+  font-weight: 600;
+}
+
+.mdquill-tree-item.mdquill-h2 {
+  padding-left: 18px;
+}
+
+.mdquill-tree-item.mdquill-h3 {
+  padding-left: 30px;
+}
+
+.mdquill-empty-hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  border-style: dashed;
+}
+
+/* ---- 体检报告（弹窗） ---- */
+
+.mdquill-check-list {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdquill-check-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+}
+
+.mdquill-check-item.error {
+  border-left: 3px solid var(--text-error);
+}
+
+.mdquill-check-item.warn {
+  border-left: 3px solid var(--text-warning);
+}
+
+.mdquill-check-badge {
+  flex: none;
+  font-size: 0.75em;
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: var(--text-on-accent);
+}
+
+.mdquill-check-item.error .mdquill-check-badge {
+  background: var(--text-error);
+}
+
+.mdquill-check-item.warn .mdquill-check-badge {
+  background: var(--text-warning);
+}
+
+.mdquill-check-msg {
+  flex: 1 1 300px;
+  font-size: 0.9em;
+}
+
+.mdquill-check-fix {
+  flex: none;
+  font-size: 0.75em;
+  color: var(--text-success);
+}
+
+.mdquill-check-line {
+  flex: none;
+  font-size: 0.85em;
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.mdquill-check-line:hover {
+  color: var(--interactive-accent);
+}

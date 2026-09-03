@@ -1,0 +1,20 @@
+{
+  "name": "obsidian-mdquill",
+  "version": "0.1.0",
+  "description": "MDQuill — 在 Obsidian 里舒服地写 md：粘贴即纯净、写完一键中文排版体检、右侧栏写作仪表盘（字数/标题树/快捷插入）。",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "build:main": "esbuild src/main.ts --bundle --format=cjs --platform=node --external:obsidian --outfile=main.js",
+    "build": "tsc -noEmit && npm run build:main"
+  },
+  "keywords": ["obsidian", "writing", "markdown", "chinese", "paste-clean", "lint"],
+  "author": "ygnstudio",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "obsidian": "latest",
+    "typescript": "^5.6.0"
+  }
+}

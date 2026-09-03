@@ -1,0 +1,38 @@
+name: verify
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (main.js)
+        run: npm run build
+
+      # 全量回归：所有历史校验套件，任一失败即红
+      - name: Full regression (verify suites)
+        run: |
+          set -e
+          for f in tests/verify_v010.py; do
+            echo "== $f =="
+            python3 "$f"
+          done
+          echo "All suites passed."

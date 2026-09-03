@@ -17,29 +17,16 @@ jobs:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-
       - name: Install dependencies
         # --legacy-peer-deps：obsidian 的 peer 依赖（@codemirror/state@6.5.0）滞后于
         # 我们为 CM6 扩展对齐的内置线（state ^6.7.2 / view ^6.43.11），peer 冲突属声明滞后，忽略
         run: npm ci --legacy-peer-deps
 
+      # vitest 单测（tests/unit/，直接测 src/ 真源码 22 用例）。
+      # 旧版 16 套 Python 回归（tests/verify_*.py，已归档 tests/legacy/）针对
+      # 拆分前的 main.ts 文本结构，与 v1.1.0 起的代码不再适配，由 vitest 取代。
+      - name: Unit tests (vitest)
+        run: npm test
+
       - name: Build (main.js)
         run: npm run build
-
-      # 全量回归：13 套红(公文线 v0.4→v0.12) + 通用 v010 + 合一判定器 entry_merge + v1.1 编辑手感 entry_editing = 16 套，任一失败即红
-      - name: Full regression (16 suites)
-        run: |
-          set -e
-          for f in tests/verify_redhead.py tests/verify_v04.py tests/verify_v052.py \
-                   tests/verify_v053.py tests/verify_v055.py tests/verify_v056.py \
-                   tests/verify_v060.py tests/verify_v070.py tests/verify_v080.py \
-                   tests/verify_v090.py tests/verify_v0100.py tests/verify_v0110.py \
-                   tests/verify_v0120.py tests/verify_v010.py tests/verify_merge.py \
-                   tests/verify_editing.py; do
-            echo "== $f =="
-            python3 "$f"
-          done
-          echo "All suites passed."

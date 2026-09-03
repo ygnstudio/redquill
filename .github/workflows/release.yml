@@ -33,14 +33,15 @@ jobs:
         run: npm run build
 
       # 发布门禁：与 verify.yml 同一份全量回归，红则不发
-      - name: Full regression (15 suites)
+      - name: Full regression (16 suites)
         run: |
           set -e
           for f in tests/verify_redhead.py tests/verify_v04.py tests/verify_v052.py \
                    tests/verify_v053.py tests/verify_v055.py tests/verify_v056.py \
                    tests/verify_v060.py tests/verify_v070.py tests/verify_v080.py \
                    tests/verify_v090.py tests/verify_v0100.py tests/verify_v0110.py \
-                   tests/verify_v0120.py tests/verify_v010.py tests/verify_merge.py; do
+                   tests/verify_v0120.py tests/verify_v010.py tests/verify_merge.py \
+                   tests/verify_editing.py; do
             echo "== $f =="
             python3 "$f"
           done

@@ -40,6 +40,15 @@ import { lineRole, nextH1, nextH2 } from './gongwen/writeassist';
 import { checkDocument as checkTypo, fixAll as fixAllTypo } from './checker';
 import { outlineOf, charStats } from './mdast';
 import { ContextGate } from './context';
+/* ---- v1.1 编辑器手感：CM6 扩展 + 选区/输入/列表纯函数（editing/ 组） ---- */
+import { buildEditingExtensions } from './editing/plugin';
+import { blockRangeAt, titleLineRangeAt, wordSegmentAt } from './editing/segments';
+import { inlineReplace, type InlineReplace } from './editing/inline';
+import { curlyWrapDelta } from './editing/quotes';
+import { breakList, listToPlain } from './editing/listops';
+/* CM6 类型：Obsidian 运行时以内置副本 resolve（esbuild 已 external，勿在 main.js 重复打包） */
+import type { EditorView } from '@codemirror/view';
+import { EditorSelection } from '@codemirror/state';
 
 /* 16 文种模板常量与新建向导纯函数在 templates.ts（v0.11.0 抽出）；re-export 保持既有入口兼容 */
 export { GONGWEN_TEMPLATES, toTemplaterSkeleton } from './gongwen/templates';
@@ -1356,6 +1365,8 @@ export default class RedQuillPlugin extends Plugin {
     this.registerView(VIEW_TYPE_PREVIEW, (leaf) => new PreviewView(leaf, this));
     this.registerView(VIEW_TYPE_WRITEASSIST, (leaf) => new WriteAssistView(leaf, this));
     this.registerView(VIEW_TYPE_PANEL, (leaf) => new RedQuillPanelView(leaf, this));
+    /* v1.1 CM6 真扩展（④双击中文词段 / ⑤中文语境引号自动成对跳越）：每个 md 编辑器生效，纯逻辑在 editing/ 可校验 */
+    this.registerEditorExtension(buildEditingExtensions());
     this.addSettingTab(new RedQuillSettingTab(this.app, this));
     this.addRibbonIcon('file-text', '排版预览', () => this.openPreview());
     this.addRibbonIcon('pen-tool', '写作辅助（跟随光标诊断标题层级）', () => this.openWriteAssistBtn());
@@ -1416,6 +1427,45 @@ export default class RedQuillPlugin extends Plugin {
       id: 'cycle-context',
       name: '切换公文模式（自动判定 → 强制公文 → 强制通用，循环；会话级，切回自动后按 frontmatter 重判）',
       callback: () => this.cycleContext(),
+    });
+    /* ---- v1.1 编辑器手感命令（④光标与选区 / ⑤行内格式与引号 / ⑦列表增强）---- */
+    this.addCommand({
+      id: 'select-block',
+      name: '选中当前段 / 标题行（md 块语义：连续列表/引用不拆，标题行只选标题本身）',
+      editorCallback: (editor) => this.selectBlock(editor),
+    });
+    this.addCommand({
+      id: 'select-word-segment',
+      name: '选中光标处词段（中文按语义边界：中/英/数分流，标点不粘连）',
+      editorCallback: (editor) => this.selectWordSegment(editor),
+    });
+    this.addCommand({
+      id: 'quote-wrap',
+      name: '中文弯引号包裹选区（无选区则插入一对，光标居中）',
+      editorCallback: (editor) => this.quoteWrap(editor),
+    });
+    for (const [id, mark, label] of [
+      ['bold', '**', '加粗'],
+      ['italic', '*', '斜体'],
+      ['strike', '~~', '删除线'],
+      ['highlight', '==', '高亮'],
+      ['code', '`', '行内代码'],
+    ] as const) {
+      this.addCommand({
+        id: `toggle-inline-${id}`,
+        name: `行内格式：${label}（已有同标记则剥离，无选区插入空对）`,
+        editorCallback: (editor) => this.toggleInlineMark(editor, mark),
+      });
+    }
+    this.addCommand({
+      id: 'break-list',
+      name: '打断列表（光标在列表项行尾时跳出回正文段落）',
+      editorCallback: (editor) => this.breakListAt(editor),
+    });
+    this.addCommand({
+      id: 'list-to-plain',
+      name: '列表转纯文本（选区或当前段逐行去列表前缀，保留缩进）',
+      editorCallback: (editor) => this.listToPlainAt(editor),
     });
 
     // 自动净化粘贴（默认关；捕获阶段拦截，仅编辑器内、且剪贴板带 html 痕迹才处理）
@@ -1604,6 +1654,131 @@ export default class RedQuillPlugin extends Plugin {
     }
     editor.replaceRange(cleaned, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
     new Notice('RedQuill：当前行已清洗。', 4000);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* v1.1 编辑器手感命令实现（④⑤⑦）：纯函数 delta → CM6 dispatch 单事务      */
+  /* ------------------------------------------------------------------ */
+
+  /** 取 CM6 EditorView：Obsidian 1.4+ 编辑器内核即 CM6（registerEditorExtension 生效的前提），Editor 实例上带非官方 cm 桥 */
+  private cmOf(editor: Editor): EditorView | null {
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    return cm && typeof cm.dispatch === 'function' ? cm : null;
+  }
+
+  /** ④ 选中当前段 / 标题行：空行界定 md 块，标题行只选标题本身（纯选择事务，不改内容） */
+  private selectBlock(editor: Editor): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const cur = cm.state.selection.main.head;
+    const [s, e] = titleLineRangeAt(text, blockRangeAt(text, cur), cur);
+    if (s >= e) {
+      new Notice('RedQuill：光标在空行上，无可选中内容。', 3000);
+      return;
+    }
+    cm.dispatch({ selection: EditorSelection.single(s, e), scrollIntoView: true });
+  }
+
+  /** ④ 选中光标处词段（命令版；双击自动版走 buildEditingExtensions）：中/英/数分流、标点不粘连 */
+  private selectWordSegment(editor: Editor): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const seg = wordSegmentAt(text, cm.state.selection.main.head);
+    if (!seg) {
+      new Notice('RedQuill：光标不在词段上（空白/标点区）。', 3000);
+      return;
+    }
+    cm.dispatch({ selection: EditorSelection.single(seg[0], seg[1]), scrollIntoView: true });
+  }
+
+  /** ⑤ 中文弯引号包裹选区（无选区 → 插 “” 光标居中）；自动成对走扩展，本命令供手动兜底/快捷键 */
+  private quoteWrap(editor: Editor): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const d = curlyWrapDelta(text, from, to);
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: EditorSelection.single(d.anchor, d.head),
+      scrollIntoView: true,
+    });
+  }
+
+  /** ⑤ 行内格式 toggle（mark 由调用方指定：** * ~~ == `）：有同标记剥离、无选区插空对、否则包裹——单事务一次 undo */
+  private toggleInlineMark(editor: Editor, mark: string): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const d = inlineReplace(text, from, to, mark);
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: EditorSelection.single(d.anchor, d.head),
+      scrollIntoView: true,
+    });
+  }
+
+  /** ⑦ 打断列表：光标在列表项行尾 → 行尾插空行跳出列表（单事务一次 undo）；不满足条件提示 */
+  private breakListAt(editor: Editor): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const cur = cm.state.selection.main.head;
+    const d = breakList(text, cur);
+    if (!d) {
+      new Notice('RedQuill：光标需在列表项行尾（且行内无待续内容）才能打断。', 4000);
+      return;
+    }
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: EditorSelection.single(d.cursor),
+      scrollIntoView: true,
+    });
+  }
+
+  /** ⑦ 列表转纯文本：选区存在则作用于选区；否则作用于光标所在 md 块（空行界定） */
+  private listToPlainAt(editor: Editor): void {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new Notice('RedQuill：请在 Markdown 编辑器中使用。', 4000);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const s = from === to ? blockRangeAt(text, to)[0] : from;
+    const e = from === to ? blockRangeAt(text, to)[1] : to;
+    if (s >= e) {
+      new Notice('RedQuill：没有可处理的列表内容。', 3000);
+      return;
+    }
+    const out = listToPlain(text.slice(s, e));
+    if (out === text.slice(s, e)) {
+      new Notice('RedQuill：选区/当前段不含列表标记，无需转换。', 3000);
+      return;
+    }
+    cm.dispatch({
+      changes: { from: s, to: e, insert: out },
+      selection: EditorSelection.single(s),
+      scrollIntoView: true,
+    });
   }
 
   /** 打开写作辅助面板：已有则复用并显示，否则在右侧栏新建（ribbon/命令/设置页共用） */

@@ -23437,7 +23437,246 @@ var ContextGate = class {
   }
 };
 
+// src/editing/plugin.ts
+var import_view = require("@codemirror/view");
+var import_state = require("@codemirror/state");
+
+// src/editing/segments.ts
+function isCjk(cp) {
+  return cp >= 13312 && cp <= 19903 || // CJK 扩展 A
+  cp >= 19968 && cp <= 40959 || // CJK 基本
+  cp >= 63744 && cp <= 64255 || // CJK 兼容
+  cp >= 131072 && cp <= 195103;
+}
+function segClsOf(ch) {
+  if (!ch) return "other";
+  const cp = ch.codePointAt(0);
+  if (isCjk(cp)) return "cjk";
+  if (cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 95)
+    return "alnum";
+  return "other";
+}
+var isBlank = (ch) => ch === " " || ch === "	" || ch === "\n" || ch === "\r";
+function wordSegmentAt(text, offset) {
+  const len = text.length;
+  if (!len) return null;
+  const pos = Math.max(0, Math.min(offset, len - 1));
+  const ch = text[pos];
+  if (isBlank(ch)) return null;
+  const cls = segClsOf(ch);
+  if (cls === "other") {
+    let s2 = pos, e2 = pos;
+    while (s2 > 0 && text[s2 - 1] === ch) s2--;
+    while (e2 + 1 < len && text[e2 + 1] === ch) e2++;
+    return [s2, e2 + 1];
+  }
+  let s = pos, e = pos;
+  while (s > 0 && segClsOf(text[s - 1]) === cls) s--;
+  while (e + 1 < len && segClsOf(text[e + 1]) === cls) e++;
+  return [s, e + 1];
+}
+function lineRangeAt(text, offset) {
+  const len = text.length;
+  const cur = Math.max(0, Math.min(offset, len));
+  const lineStart = text.lastIndexOf("\n", cur - 1) + 1;
+  let lineEnd = text.indexOf("\n", cur);
+  if (lineEnd === -1) lineEnd = len;
+  if (lineEnd > lineStart && text[lineEnd - 1] === "\r") lineEnd--;
+  return [lineStart, lineEnd];
+}
+var isBlankLine = (text, s, e) => text.slice(s, e).trim() === "";
+function blockRangeAt(text, offset) {
+  const len = text.length;
+  if (!len) return [0, 0];
+  const [lineStart, lineEnd] = lineRangeAt(text, offset);
+  if (isBlankLine(text, lineStart, lineEnd)) return [lineStart, lineEnd];
+  let start = lineStart;
+  while (start > 0) {
+    const prevEnd = start - 1;
+    const prevStart = text.lastIndexOf("\n", prevEnd - 1) + 1;
+    if (isBlankLine(text, prevStart, prevEnd)) break;
+    start = prevStart;
+  }
+  let end = lineEnd;
+  while (end < len) {
+    const nextStart = end + 1;
+    const raw = text.indexOf("\n", nextStart);
+    const nextEnd = raw === -1 ? len : raw;
+    if (isBlankLine(text, nextStart, nextEnd)) break;
+    end = nextEnd;
+  }
+  return [start, end];
+}
+function titleLineRangeAt(text, block2, offset) {
+  const [s, e] = block2;
+  if (e <= s) return [s, e];
+  const [lineStart, lineEnd] = lineRangeAt(text, s);
+  if (lineStart === s) {
+    const line = text.slice(lineStart, lineEnd);
+    if (/^#{1,6}\s+/.test(line)) {
+      const curLine = lineRangeAt(text, Math.max(0, Math.min(offset, text.length)))[0];
+      return curLine === s ? [lineStart, lineEnd] : [s, e];
+    }
+  }
+  return [s, e];
+}
+
+// src/editing/quotes.ts
+function hasCjkNear(text, offset, win = 40) {
+  const from = Math.max(0, offset - win);
+  const to = Math.min(text.length, offset + win);
+  for (let i = from; i < to; i++) {
+    if (segClsOf(text[i]) === "cjk") return true;
+  }
+  return false;
+}
+function inFence(text, offset) {
+  const cur = Math.max(0, Math.min(offset, text.length));
+  const upTo = text.slice(0, cur);
+  const lines = upTo.split("\n");
+  const curLine = lines.length - 1;
+  if (/^\s*```/.test(lines[curLine] ?? "")) return false;
+  let fence = 0;
+  for (let i = 0; i < curLine; i++) {
+    if (/^\s*```/.test(lines[i])) fence++;
+  }
+  return fence % 2 === 1;
+}
+function quotePairAt(text, offset) {
+  const len = text.length;
+  if (!len) return null;
+  const pos = Math.max(0, Math.min(offset, len));
+  if (inFence(text, pos)) return null;
+  const before = pos > 0 ? text[pos - 1] : "";
+  const after = pos < len ? text[pos] : "";
+  if (after === "\u201D") return { type: "jump", replacement: "", from: pos + 1, to: pos + 1 };
+  const winStart = Math.max(0, pos - 40);
+  for (let i = pos - 1; i >= winStart; i--) {
+    const ch = text[i];
+    if (ch === "\u201C") {
+      if (after !== "\u201D")
+        return { type: "close", replacement: "\u201D", from: pos + 1, to: pos + 1 };
+      break;
+    }
+    if (ch === "\u201D") break;
+  }
+  const prevIsAlnum = !!before && segClsOf(before) === "alnum";
+  const nextIsAlnum = !!after && segClsOf(after) === "alnum";
+  if (prevIsAlnum || nextIsAlnum) return null;
+  if (!hasCjkNear(text, pos)) return null;
+  return { type: "open", replacement: "\u201C\u201D", from: pos + 1, to: pos + 1 };
+}
+function curlyWrapDelta(text, a, b) {
+  const s = Math.max(0, Math.min(a, text.length));
+  const e = Math.max(s, Math.min(b, text.length));
+  if (e <= s) {
+    return { from: s, to: s, insert: "\u201C\u201D", anchor: s + 1, head: s + 1 };
+  }
+  return {
+    from: s,
+    to: e,
+    insert: "\u201C" + text.slice(s, e) + "\u201D",
+    anchor: s + 1,
+    head: e + 1
+  };
+}
+
+// src/editing/plugin.ts
+var dblclickSegment = import_view.ViewPlugin.fromClass(
+  class {
+    constructor(view) {
+      this.view = view;
+    }
+  },
+  {
+    eventHandlers: {
+      dblclick(event, view) {
+        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (pos === null || pos === void 0) return false;
+        const seg = wordSegmentAt(view.state.doc.toString(), pos);
+        if (!seg) return false;
+        const [s, e] = seg;
+        const sel = view.state.selection.main;
+        if (sel.from === s && sel.to === e) return true;
+        view.dispatch({
+          selection: import_state.EditorSelection.single(s, e),
+          scrollIntoView: true,
+          userEvent: "select.pointer"
+        });
+        return true;
+      }
+    }
+  }
+);
+var quoteInput = import_view.EditorView.inputHandler.of(
+  (view, from, to, text) => {
+    if (text !== '"' || from !== to) return false;
+    const r = quotePairAt(view.state.doc.toString(), from);
+    if (!r) return false;
+    if (r.type === "jump" && r.replacement === "") {
+      view.dispatch({ selection: import_state.EditorSelection.single(r.from, r.to), scrollIntoView: true });
+    } else {
+      view.dispatch({
+        changes: { from, to, insert: r.replacement },
+        selection: import_state.EditorSelection.single(r.from, r.to),
+        scrollIntoView: true
+      });
+    }
+    return true;
+  }
+);
+function buildEditingExtensions() {
+  return [dblclickSegment, quoteInput];
+}
+
+// src/editing/inline.ts
+function inlineReplace(text, a, b, mark) {
+  const len = text.length;
+  const s = Math.max(0, Math.min(a, len));
+  const e = Math.max(s, Math.min(b, len));
+  const ml = mark.length;
+  if (ml === 0) return { from: s, to: e, insert: text.slice(s, e), anchor: s, head: e };
+  if (e > s && s >= ml && text.slice(s - ml, s) === mark && text.slice(e, e + ml) === mark) {
+    return { from: s - ml, to: e + ml, insert: text.slice(s, e), anchor: s - ml, head: e - ml };
+  }
+  if (e <= s) {
+    return { from: s, to: s, insert: mark + mark, anchor: s + ml, head: s + ml };
+  }
+  return {
+    from: s,
+    to: e,
+    insert: mark + text.slice(s, e) + mark,
+    anchor: s + ml,
+    head: e + ml
+  };
+}
+
+// src/editing/listops.ts
+var LIST_RE = /^\s*(?:[-*+]|\d{1,3}[.)])\s+/;
+function breakList(text, offset) {
+  const len = text.length;
+  const cur = Math.max(0, Math.min(offset, len));
+  const lineStart = text.lastIndexOf("\n", cur - 1) + 1;
+  let lineEnd = text.indexOf("\n", cur);
+  if (lineEnd === -1) lineEnd = len;
+  if (lineEnd > lineStart && text[lineEnd - 1] === "\r") lineEnd--;
+  const line = text.slice(lineStart, lineEnd);
+  if (!LIST_RE.test(line)) return null;
+  if (cur < lineEnd && text.slice(cur, lineEnd).trim() !== "") return null;
+  const hasNl = lineEnd < len && text[lineEnd] === "\n";
+  return {
+    from: lineEnd,
+    to: lineEnd,
+    insert: hasNl ? "\n" : "\n\n",
+    cursor: lineEnd + 1
+  };
+}
+function listToPlain(text) {
+  return text.replace(/^(\s*)(?:[-*+]|\d{1,3}[.)])\s+/gm, "$1");
+}
+
 // src/main.ts
+var import_state2 = require("@codemirror/state");
 var VIEW_TYPE_PREVIEW = "redquill-preview";
 var VIEW_TYPE_WRITEASSIST = "redquill-write";
 var VIEW_TYPE_PANEL = "redquill-panel";
@@ -24470,6 +24709,7 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     this.registerView(VIEW_TYPE_PREVIEW, (leaf) => new PreviewView(leaf, this));
     this.registerView(VIEW_TYPE_WRITEASSIST, (leaf) => new WriteAssistView(leaf, this));
     this.registerView(VIEW_TYPE_PANEL, (leaf) => new RedQuillPanelView(leaf, this));
+    this.registerEditorExtension(buildEditingExtensions());
     this.addSettingTab(new RedQuillSettingTab(this.app, this));
     this.addRibbonIcon("file-text", "\u6392\u7248\u9884\u89C8", () => this.openPreview());
     this.addRibbonIcon("pen-tool", "\u5199\u4F5C\u8F85\u52A9\uFF08\u8DDF\u968F\u5149\u6807\u8BCA\u65AD\u6807\u9898\u5C42\u7EA7\uFF09", () => this.openWriteAssistBtn());
@@ -24528,6 +24768,44 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
       id: "cycle-context",
       name: "\u5207\u6362\u516C\u6587\u6A21\u5F0F\uFF08\u81EA\u52A8\u5224\u5B9A \u2192 \u5F3A\u5236\u516C\u6587 \u2192 \u5F3A\u5236\u901A\u7528\uFF0C\u5FAA\u73AF\uFF1B\u4F1A\u8BDD\u7EA7\uFF0C\u5207\u56DE\u81EA\u52A8\u540E\u6309 frontmatter \u91CD\u5224\uFF09",
       callback: () => this.cycleContext()
+    });
+    this.addCommand({
+      id: "select-block",
+      name: "\u9009\u4E2D\u5F53\u524D\u6BB5 / \u6807\u9898\u884C\uFF08md \u5757\u8BED\u4E49\uFF1A\u8FDE\u7EED\u5217\u8868/\u5F15\u7528\u4E0D\u62C6\uFF0C\u6807\u9898\u884C\u53EA\u9009\u6807\u9898\u672C\u8EAB\uFF09",
+      editorCallback: (editor) => this.selectBlock(editor)
+    });
+    this.addCommand({
+      id: "select-word-segment",
+      name: "\u9009\u4E2D\u5149\u6807\u5904\u8BCD\u6BB5\uFF08\u4E2D\u6587\u6309\u8BED\u4E49\u8FB9\u754C\uFF1A\u4E2D/\u82F1/\u6570\u5206\u6D41\uFF0C\u6807\u70B9\u4E0D\u7C98\u8FDE\uFF09",
+      editorCallback: (editor) => this.selectWordSegment(editor)
+    });
+    this.addCommand({
+      id: "quote-wrap",
+      name: "\u4E2D\u6587\u5F2F\u5F15\u53F7\u5305\u88F9\u9009\u533A\uFF08\u65E0\u9009\u533A\u5219\u63D2\u5165\u4E00\u5BF9\uFF0C\u5149\u6807\u5C45\u4E2D\uFF09",
+      editorCallback: (editor) => this.quoteWrap(editor)
+    });
+    for (const [id, mark, label] of [
+      ["bold", "**", "\u52A0\u7C97"],
+      ["italic", "*", "\u659C\u4F53"],
+      ["strike", "~~", "\u5220\u9664\u7EBF"],
+      ["highlight", "==", "\u9AD8\u4EAE"],
+      ["code", "`", "\u884C\u5185\u4EE3\u7801"]
+    ]) {
+      this.addCommand({
+        id: `toggle-inline-${id}`,
+        name: `\u884C\u5185\u683C\u5F0F\uFF1A${label}\uFF08\u5DF2\u6709\u540C\u6807\u8BB0\u5219\u5265\u79BB\uFF0C\u65E0\u9009\u533A\u63D2\u5165\u7A7A\u5BF9\uFF09`,
+        editorCallback: (editor) => this.toggleInlineMark(editor, mark)
+      });
+    }
+    this.addCommand({
+      id: "break-list",
+      name: "\u6253\u65AD\u5217\u8868\uFF08\u5149\u6807\u5728\u5217\u8868\u9879\u884C\u5C3E\u65F6\u8DF3\u51FA\u56DE\u6B63\u6587\u6BB5\u843D\uFF09",
+      editorCallback: (editor) => this.breakListAt(editor)
+    });
+    this.addCommand({
+      id: "list-to-plain",
+      name: "\u5217\u8868\u8F6C\u7EAF\u6587\u672C\uFF08\u9009\u533A\u6216\u5F53\u524D\u6BB5\u9010\u884C\u53BB\u5217\u8868\u524D\u7F00\uFF0C\u4FDD\u7559\u7F29\u8FDB\uFF09",
+      editorCallback: (editor) => this.listToPlainAt(editor)
     });
     this.registerDomEvent(
       document,
@@ -24687,6 +24965,123 @@ var RedQuillPlugin = class extends import_obsidian.Plugin {
     }
     editor.replaceRange(cleaned, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
     new import_obsidian.Notice("RedQuill\uFF1A\u5F53\u524D\u884C\u5DF2\u6E05\u6D17\u3002", 4e3);
+  }
+  /* ------------------------------------------------------------------ */
+  /* v1.1 编辑器手感命令实现（④⑤⑦）：纯函数 delta → CM6 dispatch 单事务      */
+  /* ------------------------------------------------------------------ */
+  /** 取 CM6 EditorView：Obsidian 1.4+ 编辑器内核即 CM6（registerEditorExtension 生效的前提），Editor 实例上带非官方 cm 桥 */
+  cmOf(editor) {
+    const cm = editor.cm;
+    return cm && typeof cm.dispatch === "function" ? cm : null;
+  }
+  /** ④ 选中当前段 / 标题行：空行界定 md 块，标题行只选标题本身（纯选择事务，不改内容） */
+  selectBlock(editor) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const cur = cm.state.selection.main.head;
+    const [s, e] = titleLineRangeAt(text, blockRangeAt(text, cur), cur);
+    if (s >= e) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u5728\u7A7A\u884C\u4E0A\uFF0C\u65E0\u53EF\u9009\u4E2D\u5185\u5BB9\u3002", 3e3);
+      return;
+    }
+    cm.dispatch({ selection: import_state2.EditorSelection.single(s, e), scrollIntoView: true });
+  }
+  /** ④ 选中光标处词段（命令版；双击自动版走 buildEditingExtensions）：中/英/数分流、标点不粘连 */
+  selectWordSegment(editor) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const seg = wordSegmentAt(text, cm.state.selection.main.head);
+    if (!seg) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u4E0D\u5728\u8BCD\u6BB5\u4E0A\uFF08\u7A7A\u767D/\u6807\u70B9\u533A\uFF09\u3002", 3e3);
+      return;
+    }
+    cm.dispatch({ selection: import_state2.EditorSelection.single(seg[0], seg[1]), scrollIntoView: true });
+  }
+  /** ⑤ 中文弯引号包裹选区（无选区 → 插 “” 光标居中）；自动成对走扩展，本命令供手动兜底/快捷键 */
+  quoteWrap(editor) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const d = curlyWrapDelta(text, from, to);
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: import_state2.EditorSelection.single(d.anchor, d.head),
+      scrollIntoView: true
+    });
+  }
+  /** ⑤ 行内格式 toggle（mark 由调用方指定：** * ~~ == `）：有同标记剥离、无选区插空对、否则包裹——单事务一次 undo */
+  toggleInlineMark(editor, mark) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const d = inlineReplace(text, from, to, mark);
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: import_state2.EditorSelection.single(d.anchor, d.head),
+      scrollIntoView: true
+    });
+  }
+  /** ⑦ 打断列表：光标在列表项行尾 → 行尾插空行跳出列表（单事务一次 undo）；不满足条件提示 */
+  breakListAt(editor) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const cur = cm.state.selection.main.head;
+    const d = breakList(text, cur);
+    if (!d) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u5149\u6807\u9700\u5728\u5217\u8868\u9879\u884C\u5C3E\uFF08\u4E14\u884C\u5185\u65E0\u5F85\u7EED\u5185\u5BB9\uFF09\u624D\u80FD\u6253\u65AD\u3002", 4e3);
+      return;
+    }
+    cm.dispatch({
+      changes: { from: d.from, to: d.to, insert: d.insert },
+      selection: import_state2.EditorSelection.single(d.cursor),
+      scrollIntoView: true
+    });
+  }
+  /** ⑦ 列表转纯文本：选区存在则作用于选区；否则作用于光标所在 md 块（空行界定） */
+  listToPlainAt(editor) {
+    const cm = this.cmOf(editor);
+    if (!cm) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u8BF7\u5728 Markdown \u7F16\u8F91\u5668\u4E2D\u4F7F\u7528\u3002", 4e3);
+      return;
+    }
+    const text = cm.state.doc.toString();
+    const { from, to } = cm.state.selection.main;
+    const s = from === to ? blockRangeAt(text, to)[0] : from;
+    const e = from === to ? blockRangeAt(text, to)[1] : to;
+    if (s >= e) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u6CA1\u6709\u53EF\u5904\u7406\u7684\u5217\u8868\u5185\u5BB9\u3002", 3e3);
+      return;
+    }
+    const out = listToPlain(text.slice(s, e));
+    if (out === text.slice(s, e)) {
+      new import_obsidian.Notice("RedQuill\uFF1A\u9009\u533A/\u5F53\u524D\u6BB5\u4E0D\u542B\u5217\u8868\u6807\u8BB0\uFF0C\u65E0\u9700\u8F6C\u6362\u3002", 3e3);
+      return;
+    }
+    cm.dispatch({
+      changes: { from: s, to: e, insert: out },
+      selection: import_state2.EditorSelection.single(s),
+      scrollIntoView: true
+    });
   }
   /** 打开写作辅助面板：已有则复用并显示，否则在右侧栏新建（ribbon/命令/设置页共用） */
   openWriteAssistBtn() {

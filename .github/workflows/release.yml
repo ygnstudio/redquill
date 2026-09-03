@@ -1,0 +1,70 @@
+name: release
+
+# v1.0.0 发布自动化：打 tag v* 推送即触发
+# 流程：全量 15 套回归 → 构建 → 打包资产 → 创建 GitHub Release
+# 资产 = main.js/manifest.json/styles.css 裸三件（BRAT 安装用）+ redquill-{ver}.zip（手动下载用）
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 先构建：dist/cli.js 被 .gitignore，checkout 后不存在，各 verify 脚本要调它
+      - name: Build (main.js + dist/cli.js)
+        run: npm run build
+
+      # 发布门禁：与 verify.yml 同一份全量回归，红则不发
+      - name: Full regression (15 suites)
+        run: |
+          set -e
+          for f in tests/verify_redhead.py tests/verify_v04.py tests/verify_v052.py \
+                   tests/verify_v053.py tests/verify_v055.py tests/verify_v056.py \
+                   tests/verify_v060.py tests/verify_v070.py tests/verify_v080.py \
+                   tests/verify_v090.py tests/verify_v0100.py tests/verify_v0110.py \
+                   tests/verify_v0120.py tests/verify_v010.py tests/verify_merge.py; do
+            echo "== $f =="
+            python3 "$f"
+          done
+          echo "All suites passed."
+
+      - name: Package release assets
+        run: |
+          VER=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          echo "Packaging RedQuill v$VER"
+          mkdir -p release
+          cp main.js manifest.json styles.css release/
+          (cd release && zip -r "../redquill-$VER.zip" main.js manifest.json styles.css)
+          ls -la release redquill-$VER.zip
+          # 版本一致性门禁：tag v* 必须等于 manifest version，防发错
+          if [ "v$VER" != "$GITHUB_REF_NAME" ]; then
+            echo "Mismatch: manifest version v$VER != tag $GITHUB_REF_NAME"; exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          gh release create "$GITHUB_REF_NAME" \
+            --title "RedQuill v$VER" \
+            --notes "RedQuill $VER — 通用 md 写作体验 + 红头公文引擎（GB/T 9704）合一。$(python3 -c "import json; print(json.load(open('manifest.json'))['description'])")" \
+            main.js manifest.json styles.css "redquill-$VER.zip"

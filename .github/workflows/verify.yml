@@ -27,15 +27,15 @@ jobs:
       - name: Build (main.js)
         run: npm run build
 
-      # 全量回归：13 套红(公文线 v0.4→v0.12) + 通用 v010 = 14 套，任一失败即红
-      - name: Full regression (14 suites)
+      # 全量回归：13 套红(公文线 v0.4→v0.12) + 通用 v010 + 合一判定器 entry_merge = 15 套，任一失败即红
+      - name: Full regression (15 suites)
         run: |
           set -e
           for f in tests/verify_redhead.py tests/verify_v04.py tests/verify_v052.py \
                    tests/verify_v053.py tests/verify_v055.py tests/verify_v056.py \
                    tests/verify_v060.py tests/verify_v070.py tests/verify_v080.py \
                    tests/verify_v090.py tests/verify_v0100.py tests/verify_v0110.py \
-                   tests/verify_v0120.py tests/verify_v010.py; do
+                   tests/verify_v0120.py tests/verify_v010.py tests/verify_merge.py; do
             echo "== $f =="
             python3 "$f"
           done
